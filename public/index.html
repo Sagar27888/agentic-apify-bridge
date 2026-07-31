@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agentic × Apify — Flipkart Scraper (x402 demo)</title>
+<style>
+  :root { --bg:#0b1220; --card:#121c31; --line:#22304d; --ink:#eaf0fb; --mut:#9fb0cc; --acc:#f37c23; --acc2:#6c4bc7; --ok:#34d3b5; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Plus Jakarta Sans',system-ui,Segoe UI,sans-serif; background:radial-gradient(120% 100% at 50% -10%,#16264a,#0b1220 60%); color:var(--ink); min-height:100vh; }
+  .wrap { max-width:1080px; margin:0 auto; padding:2.5rem 1.25rem 4rem; }
+  .badge { display:inline-flex; gap:.5rem; align-items:center; font-size:.72rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--acc); background:rgba(243,124,35,.1); border:1px solid rgba(243,124,35,.3); padding:.4rem .8rem; border-radius:999px; }
+  h1 { font-size:clamp(1.8rem,4vw,2.6rem); margin:1rem 0 .4rem; letter-spacing:-.02em; }
+  .sub { color:var(--mut); max-width:640px; line-height:1.6; margin:0 0 1.6rem; }
+  .bar { display:flex; gap:.6rem; flex-wrap:wrap; margin-bottom:1.6rem; }
+  input,select { background:var(--card); border:1px solid var(--line); color:var(--ink); padding:.75rem .9rem; border-radius:12px; font-size:.95rem; }
+  input { flex:1 1 240px; }
+  button { background:linear-gradient(135deg,var(--acc),#e0417a); color:#fff; border:0; padding:.75rem 1.4rem; border-radius:12px; font-weight:700; cursor:pointer; font-size:.95rem; }
+  button:disabled { opacity:.5; cursor:progress; }
+  .paybtn { background:linear-gradient(135deg,#34d3b5,#149c88); }
+  .payline { border:1px solid var(--line); background:var(--card); border-radius:12px; padding:.8rem 1rem; margin-bottom:1rem; font-size:.9rem; line-height:1.7; }
+  .payline b { color:#34d3b5; }
+  .payline .mono { font-family:ui-monospace,Menlo,monospace; font-size:.82rem; color:var(--mut); }
+  .payline .err { color:#ff8f6b; }
+  .meta { font-size:.8rem; color:var(--mut); margin-bottom:1rem; min-height:1.1rem; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:1rem; }
+  .p { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:1.1rem; position:relative; overflow:hidden; }
+  .p::before { content:""; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,var(--acc),var(--acc2)); }
+  .p h3 { font-size:.98rem; margin:.2rem 0 .6rem; line-height:1.3; min-height:2.6em; }
+  .price { font-size:1.3rem; font-weight:800; }
+  .mrp { color:var(--mut); text-decoration:line-through; font-size:.85rem; margin-left:.4rem; }
+  .off { color:var(--ok); font-weight:700; font-size:.85rem; margin-left:.4rem; }
+  .row { display:flex; align-items:center; gap:.5rem; margin-top:.6rem; font-size:.82rem; color:var(--mut); flex-wrap:wrap; }
+  .star { color:#ffc24d; font-weight:700; }
+  .fa { color:var(--acc2); border:1px solid var(--acc2); border-radius:6px; padding:.05rem .4rem; font-size:.7rem; font-weight:700; }
+  .flow { display:flex; gap:.5rem; flex-wrap:wrap; margin:1.4rem 0; }
+  .step { font-size:.78rem; color:var(--mut); background:var(--card); border:1px solid var(--line); border-radius:999px; padding:.4rem .8rem; }
+  code { background:#0a1730; padding:.15rem .4rem; border-radius:6px; color:#cdd6e6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="badge">x402 · Pay-per-call · agentic.market</span>
+  <h1>Flipkart Scraper — callable by AI agents</h1>
+  <p class="sub">This is a live demo of the Apify Actor exposed as an <b>x402</b> HTTP service. Agents pay per request in USDC (no API keys), the bridge runs the Actor, and returns structured products.</p>
+
+  <div class="flow">
+    <span class="step">1 · Agent calls endpoint</span>
+    <span class="step">2 · <code>402 Payment Required</code> (USDC price)</span>
+    <span class="step">3 · Agent pays via wallet</span>
+    <span class="step">4 · Bridge runs Apify Actor</span>
+    <span class="step">5 · Returns products</span>
+  </div>
+
+  <div class="bar">
+    <input id="q" placeholder="Search Flipkart… e.g. gaming laptop" value="smartphone" />
+    <select id="max"><option value="8">8</option><option value="12" selected>12</option><option value="24">24</option></select>
+    <button id="go">Search (free)</button>
+    <button id="pay" class="paybtn">▶ Run as paying agent (x402)</button>
+  </div>
+  <div id="payline" class="payline" hidden></div>
+  <div class="meta" id="meta">Ready.</div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+function renderItems(items) {
+  $("#grid").innerHTML = (items||[]).map(p => `
+    <div class="p">
+      <h3>${p.title}</h3>
+      <div><span class="price">₹${(p.currentPrice||0).toLocaleString('en-IN')}</span>
+        ${p.originalPrice?`<span class="mrp">₹${p.originalPrice.toLocaleString('en-IN')}</span>`:""}
+        ${p.discountPercent?`<span class="off">${p.discountPercent}% off</span>`:""}</div>
+      <div class="row"><span class="star">★ ${p.rating ?? "–"}</span>
+        <span>${(p.numRatings||0).toLocaleString('en-IN')} ratings</span>
+        ${p.fAssured?`<span class="fa">F-Assured</span>`:""}</div>
+    </div>`).join("");
+}
+
+// free search (no payment)
+async function run() {
+  const q = $("#q").value.trim() || "smartphone", max = $("#max").value;
+  $("#go").disabled = true; $("#payline").hidden = true; $("#meta").textContent = "Calling bridge…";
+  const t0 = performance.now();
+  try {
+    const r = await fetch(`/demo/flipkart?q=${encodeURIComponent(q)}&max=${max}`);
+    const data = await r.json();
+    $("#meta").textContent = `${(data.items||[]).length} products · source: ${data.source} · ${Math.round(performance.now()-t0)}ms`;
+    renderItems(data.items);
+  } catch (e) { $("#meta").textContent = "Error: " + e.message; }
+  finally { $("#go").disabled = false; }
+}
+
+// paying-agent demo (real x402 pay-per-call on testnet)
+async function runPay() {
+  const q = $("#q").value.trim() || "laptop", max = $("#max").value;
+  $("#pay").disabled = true;
+  const pl = $("#payline"); pl.hidden = false;
+  pl.innerHTML = `<b>x402 agent</b> → calling <span class="mono">/api/flipkart</span> …<br>→ got <b>402 Payment Required</b> → signing USDC payment → settling on base-sepolia…`;
+  try {
+    const r = await fetch(`/agent-pay/flipkart?q=${encodeURIComponent(q)}&max=${max}`);
+    const d = await r.json();
+    if (!d.paid) {
+      pl.innerHTML = `<span class="err">Payment not completed.</span> ${d.error||""}<br><span class="mono">${d.hint||""}</span>`;
+    } else {
+      pl.innerHTML = `<b>✔ Paid ${d.price} in USDC</b> on <b>${d.network}</b> · payer <span class="mono">${d.payer}</span> → paid → data returned.`;
+      $("#meta").textContent = `${(d.items||[]).length} products · via PAID x402 call`;
+      renderItems(d.items);
+    }
+  } catch (e) { pl.innerHTML = `<span class="err">Error: ${e.message}</span>`; }
+  finally { $("#pay").disabled = false; }
+}
+
+$("#go").addEventListener("click", run);
+$("#pay").addEventListener("click", runPay);
+$("#q").addEventListener("keydown", e => { if (e.key === "Enter") run(); });
+run();
+</script>
+</body>
+</html>

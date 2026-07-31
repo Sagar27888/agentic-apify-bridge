@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: agentic-apify-bridge
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.mjs
+    envVars:
+      - key: ACTOR
+        value: techforce.global~flipkart-scraper
+      - key: PRICE
+        value: $0.05
+      - key: NETWORK
+        value: base-sepolia
+      - key: FACILITATOR_URL
+        value: https://x402.org/facilitator
+      - key: APIFY_TOKEN
+        sync: false          # set in Render dashboard (secret)
+      - key: PAY_TO
+        sync: false          # set in Render dashboard
+      - key: PRIVATE_KEY
+        sync: false          # set in Render dashboard (testnet demo wallet only; leave empty in production)
+      - key: CDP_API_KEY_ID
+        sync: false          # ONLY for mainnet (NETWORK=base) — Coinbase CDP key id
+      - key: CDP_API_KEY_SECRET
+        sync: false          # ONLY for mainnet — Coinbase CDP key secret
