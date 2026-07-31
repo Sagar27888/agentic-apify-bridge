@@ -19,6 +19,7 @@ const {
 } = process.env;
 
 const app = express();
+app.set("trust proxy", true); // behind Render/host proxy → detect real https for x402 resource URL
 app.use(express.static(PUBLIC_DIR));
 app.get("/", (_req, res) => res.sendFile(path.join(PUBLIC_DIR, "index.html")));
 
