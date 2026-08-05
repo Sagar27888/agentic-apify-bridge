@@ -167,7 +167,7 @@ function withMoney(result, paid) {
   const money =
     result.billedTo === "customer"
       ? { agentPaysUsd: price, platformFeeUsd: fee, platformFeePaidBy: "customer (their Apify account)", netToYouUsd: +price.toFixed(6), note: "You keep the full price. Customer's Apify account pays the platform fee separately." }
-      : { agentPaysUsd: price, platformFeeUsd: fee, platformFeePaidBy: "you (our Apify account)", netToYouUsd: +(price - fee).toFixed(6), note: "Platform fee is deducted from your Apify balance. Net = price − platform fee." };
+      : { agentPaysUsd: price, platformFeeUsd: fee, platformFeePaidBy: "you (our Apify account)", netToYouUsd: +(price - fee).toFixed(6), note: "Platform fee is deducted from your Apify balance. Net = price - platform fee." };
   return { paid: !!paid, price: PRICE, network: NETWORK, ...result, money };
 }
 
