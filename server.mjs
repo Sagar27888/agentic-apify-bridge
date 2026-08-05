@@ -62,10 +62,18 @@ function inputFromReq(req) {
   };
 }
 
+// Customer-supplied Apify token (Scenario B). Header preferred; query fallback for browser tests.
+function customerToken(req) {
+  return (req.get("x-apify-token") || req.query.apify_token || "").toString().trim();
+}
+
 // ---- run the Apify Actor (or sample data) ----
-async function runActor(input) {
-  if (MOCK_DATA === "1" || !APIFY_TOKEN) return sampleItems(input);
-  const url = `https://api.apify.com/v2/acts/${ACTOR}/run-sync-get-dataset-items?token=${APIFY_TOKEN}`;
+// token passed => compute billed to THAT Apify account (Scenario B, customer pays compute).
+// no token     => our APIFY_TOKEN runs it, compute billed to US (Scenario A, platform pays compute).
+async function runActor(input, token) {
+  const useToken = token || APIFY_TOKEN;
+  if (MOCK_DATA === "1" || !useToken) return sampleItems(input);
+  const url = `https://api.apify.com/v2/acts/${ACTOR}/run-sync-get-dataset-items?token=${useToken}`;
   const r = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -77,10 +85,14 @@ async function runActor(input) {
 
 // ---- DEMO route: no payment. For showing the client the data flow. ----
 app.get("/demo/flipkart", async (req, res) => {
+  const cust = customerToken(req);
+  const billedTo = cust ? "customer" : "platform";
   try {
-    res.json({ source: MOCK_DATA === "1" || !APIFY_TOKEN ? "sample" : "apify", items: await runActor(inputFromReq(req)) });
+    const items = await runActor(inputFromReq(req), cust);
+    const source = MOCK_DATA === "1" || (!APIFY_TOKEN && !cust) ? "sample" : "apify";
+    res.json({ source, billedTo, count: Array.isArray(items) ? items.length : undefined, items });
   } catch (e) {
-    res.status(500).json({ error: String(e.message) });
+    res.status(500).json({ billedTo, error: String(e.message) });
   }
 });
 
@@ -97,9 +109,13 @@ app.get("/agent-pay/flipkart", async (req, res) => {
     const payFetch = wrapFetchWithPayment(globalThis.fetch.bind(globalThis), account);
     const q = encodeURIComponent((req.query.q || "laptop").toString());
     const max = Number(req.query.max || 12);
-    const r = await payFetch(`http://localhost:${PORT}/api/flipkart?q=${q}&max=${max}`, { method: "GET" });
+    const cust = customerToken(req); // forward customer Apify token so Scenario B works through the paid path too
+    const r = await payFetch(`http://localhost:${PORT}/api/flipkart?q=${q}&max=${max}`, {
+      method: "GET",
+      headers: cust ? { "x-apify-token": cust } : {},
+    });
     const data = await r.json();
-    res.json({ paid: true, payer: account.address, payTo: PAY_TO, price: PRICE, network: NETWORK, ...data });
+    res.json({ paid: true, billedTo: cust ? "customer" : "platform", payer: account.address, payTo: PAY_TO, price: PRICE, network: NETWORK, ...data });
   } catch (e) {
     const { privateKeyToAccount } = await import("viem/accounts");
     let addr = PAY_TO;
@@ -157,10 +173,13 @@ try {
       )
     );
     app.get("/api/flipkart", async (req, res) => {
+      const cust = customerToken(req);
+      const billedTo = cust ? "customer" : "platform";
       try {
-        res.json({ source: "apify", items: await runActor(inputFromReq(req)) });
+        const items = await runActor(inputFromReq(req), cust);
+        res.json({ source: "apify", billedTo, count: Array.isArray(items) ? items.length : undefined, items });
       } catch (e) {
-        res.status(500).json({ error: String(e.message) });
+        res.status(500).json({ billedTo, error: String(e.message) });
       }
     });
     x402Enabled = true;
