@@ -336,6 +336,17 @@ app.get("/actors", (_req, res) =>
 app.listen(PORT, () => {
   console.log(`\n  agentic-apify-bridge running: http://localhost:${PORT}`);
   console.log(`  actors:  ${Object.keys(ACTORS).join(", ")}`);
-  console.log(`  x402:    ${x402Enabled ? PRICE + " on " + NETWORK + " -> " + PAY_TO : "DISABLED (set PAY_TO)"}`);
+  console.log(`  x402:    ${x402Enabled ? "v2 on " + NETWORK + " (" + CAIP + ") -> " + PAY_TO : "DISABLED (set PAY_TO)"}`);
   console.log(`  compute: OUR token ${APIFY_TOKEN ? "set" : "MISSING"}; customers may pass x-apify-token\n`);
 });
+
+// Keep-alive: on Render free tier the instance sleeps after ~15 min idle, which makes the
+// CDP Bazaar indexer's probe time out (10s) and skip listing. A periodic self-ping to the
+// public URL keeps it warm so the indexer (and real agents) always reach a live 402.
+const SELF_URL = process.env.RENDER_EXTERNAL_URL;
+if (SELF_URL) {
+  setInterval(() => {
+    fetch(`${SELF_URL}/health`).catch(() => {});
+  }, 10 * 60 * 1000); // every 10 minutes
+  console.log(`  keep-alive: pinging ${SELF_URL}/health every 10 min`);
+}
