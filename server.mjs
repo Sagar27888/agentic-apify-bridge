@@ -231,7 +231,9 @@ app.get("/agent-pay/run", async (req, res) => {
     const { wrapFetchWithPayment } = await import("x402-fetch");
     const { privateKeyToAccount } = await import("viem/accounts");
     const account = privateKeyToAccount(pk.startsWith("0x") ? pk : "0x" + pk);
-    const payFetch = wrapFetchWithPayment(globalThis.fetch.bind(globalThis), account);
+    // 3rd arg = max USDC (atomic, 6 decimals) this self-pay client will auto-pay. Default is tiny (~$0.10),
+    // so raise it to cover per-record pricing (up to 1000 records x rate). $200 ceiling here.
+    const payFetch = wrapFetchWithPayment(globalThis.fetch.bind(globalThis), account, 200000000n);
     const qs = new URLSearchParams({ actor: key, q: req.query.q || "", location: req.query.location || "", max: String(req.query.max || 5) }).toString();
     const r = await payFetch(`http://localhost:${PORT}/api/run?${qs}`, {
       method: "GET",
