@@ -22,7 +22,16 @@ const {
 // input(p): builds the Actor's real input from simple UI params {q, location, max}.
 // row(r):   normalizes one result object into {title, sub, meta, url} for the UI table.
 // ---------------------------------------------------------------------------
-const clampMax = (v, cap) => Math.min(Math.max(Number(v || 5), 1), cap);
+// Result-count policy.
+// Floor: every call scrapes at least MIN_RESULTS (buyer always gets value).
+// Ceiling: our token (Scenario A, we pay compute) capped at CAP_OUR to protect margin.
+//          customer token (Scenario B, they pay compute) is uncapped.
+const MIN_RESULTS = 10;
+const CAP_OUR = 1000;
+function amountFor(v, token) {
+  const n = Math.max(Number(v || MIN_RESULTS), MIN_RESULTS);
+  return token ? n : Math.min(n, CAP_OUR);
+}
 
 const ACTORS = {
   "flipkart-scraper": {
@@ -30,7 +39,7 @@ const ACTORS = {
     label: "Flipkart Product Search",
     kind: "e-commerce",
     needs: ["q", "max"],
-    input: (p) => ({ searchQuery: p.q || "wireless earbuds", maxProducts: clampMax(p.max, 25), sortBy: "relevance" }),
+    input: (p) => ({ searchQuery: p.q || "wireless earbuds", maxProducts: Number(p.max), sortBy: "relevance" }),
     row: (r) => ({ title: r.title, sub: r.currentPrice != null ? "₹" + r.currentPrice : "", meta: [r.originalPrice ? "MRP ₹" + r.originalPrice : "", r.discountPercent ? r.discountPercent + "% off" : "", r.rating ? "★" + r.rating : ""].filter(Boolean).join(" · "), url: r.url }),
   },
   "amazon-scraper": {
@@ -38,7 +47,7 @@ const ACTORS = {
     label: "Amazon Product Search",
     kind: "e-commerce",
     needs: ["q", "max"],
-    input: (p) => ({ searchKeywords: [p.q || "wireless earbuds"], maxItemsPerSearch: clampMax(p.max, 25), amazonDomain: "www.amazon.in", proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] } }),
+    input: (p) => ({ searchKeywords: [p.q || "wireless earbuds"], maxItemsPerSearch: Number(p.max), amazonDomain: "www.amazon.in", proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] } }),
     row: (r) => ({ title: r.title, sub: r.priceRaw || (r.price != null ? r.price : ""), meta: [r.brand, r.rating ? "★" + r.rating : "", r.reviewsCount ? r.reviewsCount + " reviews" : ""].filter(Boolean).join(" · "), url: r.url }),
   },
   "google-maps-leads-sales-intelligence-tool": {
@@ -46,7 +55,7 @@ const ACTORS = {
     label: "Google Maps Business Leads",
     kind: "lead-gen",
     needs: ["q", "location", "max"],
-    input: (p) => ({ searchQuery: p.q || "Coffee shop", location: p.location || "Ahmedabad", maxResults: clampMax(p.max, 20), includeSalesStrategy: false, includeWebsiteHealthScorecard: false, includeServiceRecommendations: false, includeTechnicalIntel: false, proxyConfiguration: { useApifyProxy: false } }),
+    input: (p) => ({ searchQuery: p.q || "Coffee shop", location: p.location || "Ahmedabad", maxResults: Number(p.max), includeSalesStrategy: false, includeWebsiteHealthScorecard: false, includeServiceRecommendations: false, includeTechnicalIntel: false, proxyConfiguration: { useApifyProxy: false } }),
     row: (r) => ({ title: r.businessName, sub: r.category || "", meta: [r.phone && r.phone !== "NA" ? r.phone : "", r.companyEmail && r.companyEmail !== "NA" ? r.companyEmail : "", r.address].filter(Boolean).join(" · "), url: r.website || r.url }),
   },
   "eventbrite-scraper": {
@@ -54,7 +63,7 @@ const ACTORS = {
     label: "Eventbrite Events",
     kind: "events",
     needs: ["location", "max"],
-    input: (p) => ({ location: p.location || "india--ahmedabad", category: "All Events", maxEvents: clampMax(p.max, 25) }),
+    input: (p) => ({ location: p.location || "india--ahmedabad", category: "All Events", maxEvents: Number(p.max) }),
     row: (r) => ({ title: r.name, sub: r.start || "", meta: [r.venue && r.venue.city ? r.venue.city : "", r.venue && r.venue.name ? String(r.venue.name).slice(0, 60) : ""].filter(Boolean).join(" · "), url: r.url }),
   },
 };
@@ -102,7 +111,7 @@ function sampleItems(max) {
     { title: "Sample Item B", sub: "₹2,499", meta: "demo · ★4.5", url: "https://example.com/b", currentPrice: 2499 },
     { title: "Sample Item C", sub: "₹999", meta: "demo · ★4.1", url: "https://example.com/c", currentPrice: 999 },
   ];
-  return base.slice(0, clampMax(max, 3));
+  return base.slice(0, Math.min(Math.max(Number(max || MIN_RESULTS), 1), 3));
 }
 
 // ---- core: run an Actor and RETURN THE PLATFORM FEE + which account paid it ----
@@ -118,7 +127,9 @@ async function runActor(actorKey, params, token) {
     return { actor: actorKey, label: def.label, billedTo, account: "(sample)", platformFeeUsd: 0, durationSec: 0, runId: null, sample: true, items: sampleItems(params.max), rows: sampleItems(params.max) };
   }
 
-  const input = def.input(params);
+  // resolve how many to scrape: floor MIN_RESULTS; ceiling CAP_OUR on our token, uncapped on customer token
+  const amount = amountFor(params.max, token);
+  const input = def.input({ ...params, max: amount });
   // 1) start the run (async) so we can read its usage/cost afterward
   const start = await fetch(`https://api.apify.com/v2/acts/${def.apify}/runs?token=${useToken}`, {
     method: "POST",
@@ -137,9 +148,8 @@ async function runActor(actorKey, params, token) {
   }
   if (run.status !== "SUCCEEDED") throw new Error(`Run ${run.id} ended ${run.status}.`);
 
-  // 3) fetch the results
-  const max = clampMax(params.max, 25);
-  const items = await (await fetch(`https://api.apify.com/v2/datasets/${run.defaultDatasetId}/items?clean=true&limit=${max}&token=${useToken}`)).json();
+  // 3) fetch the results (limit to the resolved amount)
+  const items = await (await fetch(`https://api.apify.com/v2/datasets/${run.defaultDatasetId}/items?clean=true&limit=${amount}&token=${useToken}`)).json();
   const rows = items.map((r) => { try { return def.row(r); } catch { return { title: JSON.stringify(r).slice(0, 80) }; } });
 
   return {
@@ -151,6 +161,8 @@ async function runActor(actorKey, params, token) {
     durationSec: run.stats ? Math.round((run.stats.runTimeSecs || 0)) : null,
     runId: run.id,
     sample: false,
+    requested: amount,                          // how many we asked for (after floor/ceiling)
+    shortfall: items.length < MIN_RESULTS,      // source had fewer than the MIN_RESULTS floor
     count: items.length,
     items,
     rows,

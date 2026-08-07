@@ -106,8 +106,9 @@
         <input id="q" placeholder="wireless earbuds" value="wireless earbuds"/>
       </div>
       <div>
-        <label>Max</label>
-        <input id="max" type="number" value="3" min="1" max="25"/>
+        <label>Records</label>
+        <input id="max" type="number" value="10" min="10"/>
+        <div class="hint">min 10 · our token max 1000 · customer token uncapped</div>
       </div>
     </div>
     <div class="row" id="locrow" style="display:none">
@@ -192,7 +193,7 @@ function render(d){
       <span class="badge ${b?'cust':'our'}">compute billed to ${b?'CUSTOMER':'OUR'} side</span>
     </div>
     ${money(d.money||{})}
-    <div class="hint">Apify account charged: <b>${d.account}</b> · run: ${d.runId||'—'} · duration: ${d.durationSec!=null?d.durationSec+'s':'—'} · results: ${d.count!=null?d.count:(d.rows?d.rows.length:0)}${d.paidBy?' · agent wallet: '+d.paidBy:''}</div>
+    <div class="hint">Apify account charged: <b>${d.account}</b> · run: ${d.runId||'—'} · duration: ${d.durationSec!=null?d.durationSec+'s':'—'} · requested: ${d.requested!=null?d.requested:'—'} · returned: ${d.count!=null?d.count:(d.rows?d.rows.length:0)}${d.paidBy?' · agent wallet: '+d.paidBy:''}${d.shortfall?' · <b style="color:var(--warn)">shortfall: source had fewer than the 10 minimum</b>':''}</div>
     <div class="note">${(d.money&&d.money.note)||''}</div>
     ${rowsTable(d.rows)}
   </div>`;
