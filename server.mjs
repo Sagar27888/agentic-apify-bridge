@@ -2,6 +2,14 @@ import express from "express";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import { paymentMiddleware } from "@x402/express";
+import { x402ResourceServer, HTTPFacilitatorClient } from "@x402/core/server";
+import { ExactEvmScheme as ExactEvmServerScheme } from "@x402/evm/exact/server";
+import { ExactEvmScheme as ExactEvmClientScheme } from "@x402/evm/exact/client";
+import { declareDiscoveryExtension } from "@x402/extensions";
+import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
+import { createCdpFacilitatorClient } from "@coinbase/cdp-sdk/x402";
+import { privateKeyToAccount } from "viem/accounts";
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -192,6 +200,18 @@ function pricingForReq(req) {
   return { key, records, rate, priceUsd, priceStr: "$" + priceUsd.toFixed(4) };
 }
 
+// CAIP-2 chain id for the configured network (x402 v2 uses these)
+const CAIP = NETWORK === "base" ? "eip155:8453" : "eip155:84532";
+// x402 v2 DynamicPrice: compute "$X" from the request's records × actor rate (reads x402 request context)
+function priceFromCtx(ctx) {
+  const a = ctx.adapter;
+  const q = (n) => { const v = a.getQueryParam ? a.getQueryParam(n) : undefined; return Array.isArray(v) ? v[0] : v; };
+  const actor = q("actor") || "flipkart-scraper";
+  const token = (a.getHeader && (a.getHeader("x-apify-token") || "")) || q("apify_token") || "";
+  const records = amountFor(q("max"), token);
+  return "$" + (records * rateFor(actor)).toFixed(4);
+}
+
 // annotate a run result with the money picture (agent pays records × rate; platform fee as measured)
 function withMoney(result, paid) {
   const price = typeof result.priceUsd === "number" ? result.priceUsd : priceNum();
@@ -228,13 +248,11 @@ app.get("/agent-pay/run", async (req, res) => {
   const { key } = actorFromReq(req);
   const cust = customerToken(req);
   try {
-    const { wrapFetchWithPayment } = await import("x402-fetch");
-    const { privateKeyToAccount } = await import("viem/accounts");
     const account = privateKeyToAccount(pk.startsWith("0x") ? pk : "0x" + pk);
-    // 3rd arg = max USDC (atomic, 6 decimals) this self-pay client will auto-pay. Default is tiny (~$0.10),
-    // so raise it to cover per-record pricing (up to 1000 records x rate). $200 ceiling here.
-    const payFetch = wrapFetchWithPayment(globalThis.fetch.bind(globalThis), account, 200000000n);
-    const qs = new URLSearchParams({ actor: key, q: req.query.q || "", location: req.query.location || "", max: String(req.query.max || 5) }).toString();
+    // x402 v2 client: register the EVM 'exact' scheme for our network, signed by the payer wallet.
+    const client = new x402Client().register(CAIP, new ExactEvmClientScheme(account));
+    const payFetch = wrapFetchWithPayment(globalThis.fetch.bind(globalThis), client);
+    const qs = new URLSearchParams({ actor: key, q: req.query.q || "", location: req.query.location || "", max: String(req.query.max || 10) }).toString();
     const r = await payFetch(`http://localhost:${PORT}/api/run?${qs}`, {
       method: "GET",
       headers: cust ? { "x-apify-token": cust } : {},
@@ -242,76 +260,70 @@ app.get("/agent-pay/run", async (req, res) => {
     const data = await r.json();
     res.json({ paidBy: account.address, payTo: PAY_TO, ...data });
   } catch (e) {
-    res.status(502).json({ paid: false, error: String(e.message), hint: "Fund the base-sepolia test wallet with test USDC, then retry." });
+    res.status(502).json({ paid: false, error: String(e.message), hint: "Ensure the payer wallet holds USDC on Base." });
   }
 });
 
-// ---- x402 PAID route: the real monetized endpoint agents / agentic.market call ----
+// ---- x402 v2 PAID route: the real monetized endpoint agents / agentic.market call ----
 let x402Enabled = false;
 try {
-  const { paymentMiddleware } = await import("x402-express");
   if (PAY_TO) {
-    let facilitatorConfig = { url: FACILITATOR_URL };
-    if (NETWORK === "base" && process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET) {
-      try {
-        const { facilitator } = await import("@coinbase/x402");
-        facilitatorConfig = facilitator;
-        console.log("[x402] using Coinbase CDP mainnet facilitator");
-      } catch {
-        console.log("[x402] @coinbase/x402 not installed; run: npm i @coinbase/x402");
-      }
-    }
-    // Build the x402 gate for a specific computed price (per-record pricing => price varies per request).
-    const buildGate = (priceStr) =>
-      paymentMiddleware(
-        PAY_TO,
-        {
-          "GET /api/run": {
-            price: priceStr,
-            network: NETWORK,
-            config: {
-              discoverable: true,
-              description: "Apify Actor bridge, priced PER RECORD. Pass ?actor= (flipkart-scraper | amazon-scraper | google-maps-leads-sales-intelligence-tool | eventbrite-scraper) plus q / location / max (min 10). Price = records × per-record rate. Optional x-apify-token header runs compute on the caller's own Apify account.",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  actor: { type: "string", description: "Actor key", default: "google-maps-leads-sales-intelligence-tool" },
-                  q: { type: "string", description: "Search text / keyword" },
-                  location: { type: "string", description: "Location (Google Maps / Eventbrite)" },
-                  max: { type: "integer", description: "Records to return (min 10, max 1000)", default: 10 },
-                },
-              },
-              outputSchema: { type: "object", properties: { items: { type: "array" } } },
-            },
-          },
-        },
-        facilitatorConfig
-      );
+    // Mainnet (base): Coinbase CDP facilitator (reads CDP_API_KEY_ID / CDP_API_KEY_SECRET) — required for Bazaar listing.
+    // Testnet (base-sepolia): public x402.org facilitator.
+    const useCdp = NETWORK === "base" && process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET;
+    const facilitator = useCdp ? createCdpFacilitatorClient() : new HTTPFacilitatorClient({ url: FACILITATOR_URL });
+    console.log(`[x402] v2 facilitator: ${useCdp ? "Coinbase CDP mainnet" : FACILITATOR_URL} on ${CAIP}`);
+    const resourceServer = new x402ResourceServer(facilitator).register("eip155:*", new ExactEvmServerScheme());
 
-    // 1) compute this call's price, 2) gate payment for that exact price, 3) run the Actor
-    app.get(
-      "/api/run",
-      (req, res, next) => {
-        req._pricing = pricingForReq(req);
-        return buildGate(req._pricing.priceStr)(req, res, next);
+    const routes = {
+      "GET /api/run": {
+        accepts: {
+          scheme: "exact",
+          network: CAIP,
+          payTo: PAY_TO,
+          price: (ctx) => priceFromCtx(ctx), // dynamic per-record price
+        },
+        description: "Apify Actor bridge, priced per record. Google Maps business leads (name, phone, website, email, address) and more. Query params: actor, q, location, max (min 10). Optional x-apify-token header bills Apify compute to the caller.",
+        mimeType: "application/json",
+        extensions: {
+          ...declareDiscoveryExtension({
+            method: "GET",
+            inputSchema: {
+              type: "object",
+              properties: {
+                actor: { type: "string", description: "Actor key (default google-maps-leads-sales-intelligence-tool)" },
+                q: { type: "string", description: "Search text / keyword" },
+                location: { type: "string", description: "Location (Google Maps / Eventbrite)" },
+                max: { type: "integer", description: "Records to return (min 10, max 1000)" },
+              },
+            },
+            output: {
+              example: { items: [{ businessName: "Vince cafe", category: "Cafe", phone: "+91 63526 10595", address: "Ahmedabad, Gujarat, India", website: "" }] },
+            },
+          }),
+        },
       },
-      async (req, res) => {
-        const { key } = actorFromReq(req);
-        const cust = customerToken(req);
-        try {
-          const result = await runActor(key, paramsFromReq(req), cust);
-          result.priceUsd = req._pricing.priceUsd;
-          result.ratePerRecord = req._pricing.rate;
-          res.json(withMoney(result, true));
-        } catch (e) {
-          res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
-        }
+    };
+    app.use(paymentMiddleware(routes, resourceServer));
+
+    // Runs only after payment is verified/settled by the middleware.
+    app.get("/api/run", async (req, res) => {
+      const { key } = actorFromReq(req);
+      const cust = customerToken(req);
+      try {
+        const pr = pricingForReq(req);
+        const result = await runActor(key, paramsFromReq(req), cust);
+        result.priceUsd = pr.priceUsd;
+        result.ratePerRecord = pr.rate;
+        res.json(withMoney(result, true));
+      } catch (e) {
+        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
       }
-    );
+    });
     x402Enabled = true;
   }
 } catch (e) {
-  console.log("[x402] disabled (package not installed):", e.message);
+  console.log("[x402] disabled:", e.message);
 }
 
 app.get("/health", (_req, res) =>

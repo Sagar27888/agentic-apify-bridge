@@ -1,22 +1,23 @@
 {
   "name": "agentic-apify-bridge",
-  "version": "1.0.0",
-  "description": "x402 -> Apify Actor bridge. Makes any Apify Actor callable as a pay-per-request x402 service (agentic.market compatible).",
+  "version": "2.0.0",
+  "description": "x402 (v2) -> Apify Actor bridge. Makes any Apify Actor callable as a pay-per-request x402 service, discoverable in the CDP Bazaar / agentic.market.",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "demo": "cross-env MOCK_DATA=1 node server.mjs",
-    "pay": "node paid-client.mjs"
+    "demo": "cross-env MOCK_DATA=1 node server.mjs"
   },
   "dependencies": {
+    "@coinbase/cdp-sdk": "^1.55.0",
+    "@x402/core": "2.21.0",
+    "@x402/evm": "2.21.0",
+    "@x402/express": "2.21.0",
+    "@x402/extensions": "2.21.0",
+    "@x402/fetch": "2.21.0",
+    "@x402/svm": "2.21.0",
     "cross-env": "^7.0.3",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2"
-  },
-  "optionalDependencies": {
-    "x402-express": "^0.3.0",
-    "x402-fetch": "^0.3.0",
-    "@coinbase/x402": "^0.4.0",
+    "express": "^4.19.2",
     "viem": "^2.21.0"
   }
 }
