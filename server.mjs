@@ -172,23 +172,46 @@ async function runActor(actorKey, params, token) {
 // price string "$0.05" -> number
 function priceNum() { const n = parseFloat(String(PRICE).replace(/[^0-9.]/g, "")); return isNaN(n) ? 0 : n; }
 
-// annotate a run result with the money picture (agent pays PRICE; platform fee as above)
+// ---- per-record pricing ----
+// What the paying agent is charged PER RECORD, by Actor. Price for a call = records × rate.
+const RATES = {
+  "google-maps-leads-sales-intelligence-tool": 0.10, // premium leads
+  "amazon-scraper": 0.01,
+  "flipkart-scraper": 0.008,
+  "eventbrite-scraper": 0.006,
+};
+const DEFAULT_RATE = Number(process.env.RATE_PER_RECORD || 0.01);
+const rateFor = (key) => (RATES[key] != null ? RATES[key] : DEFAULT_RATE);
+
+// resolve {records, rate, priceUsd} for a request (floor 10; cap 1000 on our token)
+function pricingForReq(req) {
+  const { key } = actorFromReq(req);
+  const records = amountFor(req.query.max, customerToken(req));
+  const rate = rateFor(key);
+  const priceUsd = +(records * rate).toFixed(4);
+  return { key, records, rate, priceUsd, priceStr: "$" + priceUsd.toFixed(4) };
+}
+
+// annotate a run result with the money picture (agent pays records × rate; platform fee as measured)
 function withMoney(result, paid) {
-  const price = priceNum();
+  const price = typeof result.priceUsd === "number" ? result.priceUsd : priceNum();
   const fee = typeof result.platformFeeUsd === "number" ? result.platformFeeUsd : 0;
   const money =
     result.billedTo === "customer"
-      ? { agentPaysUsd: price, platformFeeUsd: fee, platformFeePaidBy: "customer (their Apify account)", netToYouUsd: +price.toFixed(6), note: "You keep the full price. Customer's Apify account pays the platform fee separately." }
-      : { agentPaysUsd: price, platformFeeUsd: fee, platformFeePaidBy: "you (our Apify account)", netToYouUsd: +(price - fee).toFixed(6), note: "Platform fee is deducted from your Apify balance. Net = price - platform fee." };
-  return { paid: !!paid, price: PRICE, network: NETWORK, ...result, money };
+      ? { agentPaysUsd: price, ratePerRecord: result.ratePerRecord, platformFeeUsd: fee, platformFeePaidBy: "customer (their Apify account)", netToYouUsd: +price.toFixed(6), note: "You keep the full price. Customer's Apify account pays the platform fee separately." }
+      : { agentPaysUsd: price, ratePerRecord: result.ratePerRecord, platformFeeUsd: fee, platformFeePaidBy: "you (our Apify account)", netToYouUsd: +(price - fee).toFixed(6), note: "Platform fee is deducted from your Apify balance. Net = price - platform fee." };
+  return { paid: !!paid, price: "$" + price.toFixed(4), network: NETWORK, ...result, money };
 }
 
 // ---- FREE preview (no payment) — shows the Actor + platform fee for both scenarios ----
 app.get("/demo/run", async (req, res) => {
   const { key } = actorFromReq(req);
   const cust = customerToken(req);
+  const pr = pricingForReq(req);
   try {
     const result = await runActor(key, paramsFromReq(req), cust);
+    result.priceUsd = pr.priceUsd;
+    result.ratePerRecord = pr.rate;
     res.json(withMoney(result, false));
   } catch (e) {
     res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
@@ -236,23 +259,24 @@ try {
         console.log("[x402] @coinbase/x402 not installed; run: npm i @coinbase/x402");
       }
     }
-    app.use(
+    // Build the x402 gate for a specific computed price (per-record pricing => price varies per request).
+    const buildGate = (priceStr) =>
       paymentMiddleware(
         PAY_TO,
         {
           "GET /api/run": {
-            price: PRICE,
+            price: priceStr,
             network: NETWORK,
             config: {
               discoverable: true,
-              description: "Apify Actor bridge. Pass ?actor= (flipkart-scraper | amazon-scraper | google-maps-leads-sales-intelligence-tool | eventbrite-scraper) plus q / location / max. Returns structured results. Optional x-apify-token header runs compute on the caller's own Apify account.",
+              description: "Apify Actor bridge, priced PER RECORD. Pass ?actor= (flipkart-scraper | amazon-scraper | google-maps-leads-sales-intelligence-tool | eventbrite-scraper) plus q / location / max (min 10). Price = records × per-record rate. Optional x-apify-token header runs compute on the caller's own Apify account.",
               inputSchema: {
                 type: "object",
                 properties: {
-                  actor: { type: "string", description: "Actor key", default: "flipkart-scraper" },
+                  actor: { type: "string", description: "Actor key", default: "google-maps-leads-sales-intelligence-tool" },
                   q: { type: "string", description: "Search text / keyword" },
                   location: { type: "string", description: "Location (Google Maps / Eventbrite)" },
-                  max: { type: "integer", description: "Max results (1-25)", default: 5 },
+                  max: { type: "integer", description: "Records to return (min 10, max 1000)", default: 10 },
                 },
               },
               outputSchema: { type: "object", properties: { items: { type: "array" } } },
@@ -260,18 +284,28 @@ try {
           },
         },
         facilitatorConfig
-      )
-    );
-    app.get("/api/run", async (req, res) => {
-      const { key } = actorFromReq(req);
-      const cust = customerToken(req);
-      try {
-        const result = await runActor(key, paramsFromReq(req), cust);
-        res.json(withMoney(result, true));
-      } catch (e) {
-        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+      );
+
+    // 1) compute this call's price, 2) gate payment for that exact price, 3) run the Actor
+    app.get(
+      "/api/run",
+      (req, res, next) => {
+        req._pricing = pricingForReq(req);
+        return buildGate(req._pricing.priceStr)(req, res, next);
+      },
+      async (req, res) => {
+        const { key } = actorFromReq(req);
+        const cust = customerToken(req);
+        try {
+          const result = await runActor(key, paramsFromReq(req), cust);
+          result.priceUsd = req._pricing.priceUsd;
+          result.ratePerRecord = req._pricing.rate;
+          res.json(withMoney(result, true));
+        } catch (e) {
+          res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+        }
       }
-    });
+    );
     x402Enabled = true;
   }
 } catch (e) {
@@ -279,10 +313,10 @@ try {
 }
 
 app.get("/health", (_req, res) =>
-  res.json({ ok: true, x402: x402Enabled, network: NETWORK, price: PRICE, actors: Object.keys(ACTORS), mock: MOCK_DATA === "1" })
+  res.json({ ok: true, x402: x402Enabled, network: NETWORK, pricing: "per-record", minRecords: MIN_RESULTS, capOurToken: CAP_OUR, rates: RATES, actors: Object.keys(ACTORS), mock: MOCK_DATA === "1" })
 );
 app.get("/actors", (_req, res) =>
-  res.json(Object.entries(ACTORS).map(([key, d]) => ({ key, label: d.label, kind: d.kind, needs: d.needs })))
+  res.json(Object.entries(ACTORS).map(([key, d]) => ({ key, label: d.label, kind: d.kind, needs: d.needs, ratePerRecord: rateFor(key) })))
 );
 
 app.listen(PORT, () => {

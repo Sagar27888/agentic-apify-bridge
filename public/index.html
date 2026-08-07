@@ -109,6 +109,7 @@
         <label>Records</label>
         <input id="max" type="number" value="10" min="10"/>
         <div class="hint">min 10 · our token max 1000 · customer token uncapped</div>
+        <div class="hint" id="priceEst" style="font-weight:700;color:var(--accent-d)"></div>
       </div>
     </div>
     <div class="row" id="locrow" style="display:none">
@@ -161,8 +162,16 @@ function syncFields(){
   if(a.key==="google-maps-leads-sales-intelligence-tool"){ $("q").value="Coffee shop"; $("location").value="Ahmedabad"; }
   else if(a.key==="eventbrite-scraper"){ $("location").value="india--ahmedabad"; }
   else if(a.key==="amazon-scraper"||a.key==="flipkart-scraper"){ $("q").value="wireless earbuds"; }
+  updatePrice();
+}
+function updatePrice(){
+  const a=currentActor();
+  const rate=a.ratePerRecord||0;
+  const recs=Math.max(Number($("max").value||10),10);
+  $("priceEst").textContent = rate? `Price: $${(recs*rate).toFixed(2)} for ${recs} records ($${rate}/record)` : "";
 }
 $("actor").addEventListener("change",syncFields);
+$("max").addEventListener("input",updatePrice);
 
 function busy(on,label){
   [$("btnOur"),$("btnCust"),$("btnFree")].forEach(b=>b.disabled=on);
