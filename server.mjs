@@ -288,7 +288,7 @@ try {
           price: (ctx) => priceFromCtx(ctx), // dynamic per-record price
         },
         resource: PUBLIC_RESOURCE, // pin to public https URL so the CDP Bazaar accepts discovery registration
-        serviceName: "TechForce - Google Maps Business Leads",
+        serviceName: "Google Business Leads", // <=32 chars (Bazaar limit)
         tags: ["leads", "google-maps", "sales-intelligence", "b2b", "scraper"],
         description: "Google Maps business leads on demand: business name, category, phone, website, email, address, hours. Priced $0.10 per lead, minimum 10 leads ($1.00 per call). Query params: q (search, e.g. 'Coffee shop'), location (e.g. 'Ahmedabad'), max (records, min 10). Other Apify actors available via ?actor=. Optional x-apify-token header bills Apify compute to the caller.",
         mimeType: "application/json",
