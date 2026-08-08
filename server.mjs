@@ -295,6 +295,12 @@ try {
         extensions: {
           ...declareDiscoveryExtension({
             method: "GET",
+            input: {
+              actor: "google-maps-leads-sales-intelligence-tool",
+              q: "Coffee shop",
+              location: "Ahmedabad",
+              max: 10,
+            },
             inputSchema: {
               type: "object",
               properties: {
