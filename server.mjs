@@ -202,6 +202,10 @@ function pricingForReq(req) {
 
 // CAIP-2 chain id for the configured network (x402 v2 uses these)
 const CAIP = NETWORK === "base" ? "eip155:8453" : "eip155:84532";
+// Public HTTPS resource URL. MUST be https for the CDP Bazaar to accept discovery registration.
+// (Render provides RENDER_EXTERNAL_URL; falls back to an explicit PUBLIC_URL env, else undefined for local dev.)
+const PUBLIC_BASE = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || "";
+const PUBLIC_RESOURCE = PUBLIC_BASE ? `${PUBLIC_BASE.replace(/\/$/, "")}/api/run` : undefined;
 // x402 v2 DynamicPrice: compute "$X" from the request's records × actor rate (reads x402 request context)
 function priceFromCtx(ctx) {
   const a = ctx.adapter;
@@ -283,6 +287,7 @@ try {
           payTo: PAY_TO,
           price: (ctx) => priceFromCtx(ctx), // dynamic per-record price
         },
+        resource: PUBLIC_RESOURCE, // pin to public https URL so the CDP Bazaar accepts discovery registration
         description: "Apify Actor bridge, priced per record. Google Maps business leads (name, phone, website, email, address) and more. Query params: actor, q, location, max (min 10). Optional x-apify-token header bills Apify compute to the caller.",
         mimeType: "application/json",
         extensions: {
