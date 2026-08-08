@@ -34,7 +34,7 @@ const {
 // Floor: every call scrapes at least MIN_RESULTS (buyer always gets value).
 // Ceiling: our token (Scenario A, we pay compute) capped at CAP_OUR to protect margin.
 //          customer token (Scenario B, they pay compute) is uncapped.
-const MIN_RESULTS = 10;
+const MIN_RESULTS = 1;
 const CAP_OUR = 1000;
 function amountFor(v, token) {
   const n = Math.max(Number(v || MIN_RESULTS), MIN_RESULTS);
@@ -83,7 +83,7 @@ app.get("/", (_req, res) => res.sendFile(path.join(PUBLIC_DIR, "index.html")));
 
 // ---- helpers ----
 function actorFromReq(req) {
-  const key = (req.query.actor || "flipkart-scraper").toString();
+  const key = (req.query.actor || "google-maps-leads-sales-intelligence-tool").toString();
   return { key, def: ACTORS[key] };
 }
 function paramsFromReq(req) {
@@ -210,7 +210,7 @@ const PUBLIC_RESOURCE = PUBLIC_BASE ? `${PUBLIC_BASE.replace(/\/$/, "")}/api/run
 function priceFromCtx(ctx) {
   const a = ctx.adapter;
   const q = (n) => { const v = a.getQueryParam ? a.getQueryParam(n) : undefined; return Array.isArray(v) ? v[0] : v; };
-  const actor = q("actor") || "flipkart-scraper";
+  const actor = q("actor") || "google-maps-leads-sales-intelligence-tool";
   const token = (a.getHeader && (a.getHeader("x-apify-token") || "")) || q("apify_token") || "";
   const records = amountFor(q("max"), token);
   return "$" + (records * rateFor(actor)).toFixed(4);
@@ -288,7 +288,9 @@ try {
           price: (ctx) => priceFromCtx(ctx), // dynamic per-record price
         },
         resource: PUBLIC_RESOURCE, // pin to public https URL so the CDP Bazaar accepts discovery registration
-        description: "Apify Actor bridge, priced per record. Google Maps business leads (name, phone, website, email, address) and more. Query params: actor, q, location, max (min 10). Optional x-apify-token header bills Apify compute to the caller.",
+        serviceName: "TechForce - Google Maps Business Leads",
+        tags: ["leads", "google-maps", "sales-intelligence", "b2b", "scraper"],
+        description: "Google Maps business leads on demand: business name, category, phone, website, email, address, hours. Priced $0.10 per lead. Query params: q (search, e.g. 'Coffee shop'), location (e.g. 'Ahmedabad'), max (records). Other Apify actors available via ?actor=. Optional x-apify-token header bills Apify compute to the caller.",
         mimeType: "application/json",
         extensions: {
           ...declareDiscoveryExtension({
