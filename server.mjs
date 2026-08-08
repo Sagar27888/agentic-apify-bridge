@@ -34,7 +34,7 @@ const {
 // Floor: every call scrapes at least MIN_RESULTS (buyer always gets value).
 // Ceiling: our token (Scenario A, we pay compute) capped at CAP_OUR to protect margin.
 //          customer token (Scenario B, they pay compute) is uncapped.
-const MIN_RESULTS = 10;
+const MIN_RESULTS = 1;
 const CAP_OUR = 1000;
 function amountFor(v, token) {
   const n = Math.max(Number(v || MIN_RESULTS), MIN_RESULTS);
@@ -290,7 +290,7 @@ try {
         resource: PUBLIC_RESOURCE, // pin to public https URL so the CDP Bazaar accepts discovery registration
         serviceName: "Google Maps Business Leads", // <=32 chars (Bazaar limit)
         tags: ["leads", "google-maps", "sales-intelligence", "b2b", "scraper"],
-        description: "Google Maps business leads on demand: business name, category, phone, website, email, address, hours. Priced $0.10 per lead, minimum 10 leads ($1.00 per call). Query params: q (search, e.g. 'Coffee shop'), location (e.g. 'Ahmedabad'), max (records, min 10). Other Apify actors available via ?actor=. Optional x-apify-token header bills Apify compute to the caller.",
+        description: "Google Maps business leads on demand: business name, category, phone, website, email, address, hours. Priced $0.10 per lead (minimum 1, up to 1000). Query params: q (search, e.g. 'Coffee shop'), location (e.g. 'Ahmedabad'), max (number of leads). Other Apify actors available via ?actor=. Optional x-apify-token header bills Apify compute to the caller.",
         mimeType: "application/json",
         extensions: {
           ...declareDiscoveryExtension({
