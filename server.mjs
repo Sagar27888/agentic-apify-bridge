@@ -305,7 +305,28 @@ try {
               },
             },
             output: {
-              example: { items: [{ businessName: "Vince cafe", category: "Cafe", phone: "+91 63526 10595", address: "Ahmedabad, Gujarat, India", website: "" }] },
+              schema: {
+                type: "object",
+                properties: {
+                  items: {
+                    type: "array",
+                    description: "Array of business leads",
+                    items: {
+                      type: "object",
+                      properties: {
+                        businessName: { type: "string", description: "Business name" },
+                        category: { type: "string", description: "Business category" },
+                        phone: { type: "string", description: "Phone number" },
+                        website: { type: "string", description: "Website URL" },
+                        companyEmail: { type: "string", description: "Email (if found)" },
+                        address: { type: "string", description: "Full address" },
+                        workingHours: { type: "object", description: "Opening hours by day" },
+                      },
+                    },
+                  },
+                },
+              },
+              example: { items: [{ businessName: "Vince cafe", category: "Cafe", phone: "+91 63526 10595", website: "", companyEmail: "", address: "Ahmedabad, Gujarat, India", workingHours: { Monday: "11 AM - 1 AM" } }] },
             },
           }),
         },
