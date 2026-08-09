@@ -290,25 +290,24 @@ try {
         resource: PUBLIC_RESOURCE, // pin to public https URL so the CDP Bazaar accepts discovery registration
         serviceName: "Google Maps Business Leads", // <=32 chars (Bazaar limit)
         tags: ["leads", "google-maps", "sales-intelligence", "b2b", "scraper"],
-        description: "Google Maps business leads on demand: business name, category, phone, website, email, address, hours. Priced $0.10 per lead (minimum 1, up to 1000). Query params: q (search, e.g. 'Coffee shop'), location (e.g. 'Ahmedabad'), max (number of leads). Other Apify actors available via ?actor=. Optional x-apify-token header bills Apify compute to the caller.",
+        description: "Google Maps business leads on demand: business name, category, phone, website, email, address, hours. Priced $0.10 per lead (minimum 1, up to 1000). Query params: q (search, e.g. 'Coffee shop'), location (city/area, e.g. 'London'), max (number of leads). Works for any city worldwide.",
         mimeType: "application/json",
         extensions: {
           ...declareDiscoveryExtension({
             method: "GET",
             input: {
-              actor: "google-maps-leads-sales-intelligence-tool",
               q: "Coffee shop",
-              location: "Ahmedabad",
+              location: "London",
               max: 10,
             },
             inputSchema: {
               type: "object",
               properties: {
-                actor: { type: "string", description: "Actor key (default google-maps-leads-sales-intelligence-tool)" },
-                q: { type: "string", description: "Search text / keyword" },
-                location: { type: "string", description: "Location (Google Maps / Eventbrite)" },
-                max: { type: "integer", description: "Records to return (min 10, max 1000)" },
+                q: { type: "string", description: "Search text / keyword, e.g. 'Coffee shop'" },
+                location: { type: "string", description: "City or area, e.g. 'London'" },
+                max: { type: "integer", description: "Number of leads to return (min 1, max 1000)" },
               },
+              required: ["q", "location"],
             },
             output: {
               schema: {
@@ -332,7 +331,7 @@ try {
                   },
                 },
               },
-              example: { items: [{ businessName: "Vince cafe", category: "Cafe", phone: "+91 63526 10595", website: "", companyEmail: "", address: "Ahmedabad, Gujarat, India", workingHours: { Monday: "11 AM - 1 AM" } }] },
+              example: { items: [{ businessName: "Monmouth Coffee", category: "Coffee shop", phone: "+44 20 7232 3010", website: "https://www.monmouthcoffee.co.uk", companyEmail: "", address: "27 Monmouth St, London WC2H 9EU, UK", workingHours: { "Mon-Sat": "8 AM - 6 PM" } }] },
             },
           }),
         },
