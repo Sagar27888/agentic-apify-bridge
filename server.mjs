@@ -290,6 +290,19 @@ try {
         resource: PUBLIC_RESOURCE, // pin to public https URL so the CDP Bazaar accepts discovery registration
         serviceName: "Google Maps Business Leads", // <=32 chars (Bazaar limit)
         tags: ["leads", "google-maps", "sales-intelligence", "b2b", "scraper"],
+        // Real sample returned in the 402 body for unpaid requests, so marketplace cards
+        // (and any client) can preview the true output shape without paying.
+        unpaidResponseBody: () => ({
+          contentType: "application/json",
+          body: {
+            note: "Sample preview. Pay $0.10/lead via x402 to receive live results.",
+            items: [
+              { businessName: "Monmouth Coffee", category: "Coffee shop", phone: "+44 20 7232 3010", website: "https://www.monmouthcoffee.co.uk", companyEmail: "hello@monmouthcoffee.co.uk", address: "27 Monmouth St, London WC2H 9EU, UK", workingHours: { "Mon-Sat": "8 AM - 6 PM" } },
+              { businessName: "Kaffeine", category: "Coffee shop", phone: "+44 20 7580 6755", website: "https://www.kaffeine.co.uk", companyEmail: "", address: "66 Great Titchfield St, London W1W 7QJ, UK", workingHours: { "Mon-Fri": "7:30 AM - 5 PM" } },
+              { businessName: "Prufrock Coffee", category: "Coffee shop", phone: "+44 20 7242 0467", website: "https://www.prufrockcoffee.com", companyEmail: "info@prufrockcoffee.com", address: "23-25 Leather Ln, London EC1N 7TE, UK", workingHours: { "Mon-Fri": "8 AM - 6 PM" } },
+            ],
+          },
+        }),
         description: "Google Maps business leads on demand: business name, category, phone, website, email, address, hours. Priced $0.10 per lead (minimum 1, up to 1000). Query params: q (search, e.g. 'Coffee shop'), location (city/area, e.g. 'London'), max (number of leads). Works for any city worldwide.",
         mimeType: "application/json",
         extensions: {
