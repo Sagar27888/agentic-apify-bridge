@@ -108,7 +108,7 @@
       <div>
         <label>Records</label>
         <input id="max" type="number" value="10" min="1"/>
-        <div class="hint">min 1 · max 1000 · $0.10 per lead</div>
+        <div class="hint">min 1 · max 1000 · $0.05 per lead</div>
         <div class="hint" id="priceEst" style="font-weight:700;color:var(--accent-d)"></div>
       </div>
     </div>
@@ -159,7 +159,7 @@ function syncFields(){
   $("locrow").style.display = a.needs.includes("location")?"block":"none";
   $("q").parentElement.style.opacity = a.needs.includes("q")?1:.45;
   $("needs").textContent = "inputs: "+a.needs.join(", ");
-  if(a.key==="google-maps-leads-sales-intelligence-tool"){ $("q").value="Coffee shop"; $("location").value="Ahmedabad"; }
+  if(a.key==="google-maps-leads-sales-intelligence-tool"){ $("q").value="Coffee shop"; $("location").value="London"; }
   else if(a.key==="eventbrite-scraper"){ $("location").value="india--ahmedabad"; }
   else if(a.key==="amazon-scraper"||a.key==="flipkart-scraper"){ $("q").value="wireless earbuds"; }
   updatePrice();

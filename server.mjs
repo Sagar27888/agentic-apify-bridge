@@ -63,7 +63,7 @@ const ACTORS = {
     label: "Google Maps Business Leads",
     kind: "lead-gen",
     needs: ["q", "location", "max"],
-    input: (p) => ({ searchQuery: p.q || "Coffee shop", location: p.location || "Ahmedabad", maxResults: Number(p.max), includeSalesStrategy: false, includeWebsiteHealthScorecard: false, includeServiceRecommendations: false, includeTechnicalIntel: false, proxyConfiguration: { useApifyProxy: false } }),
+    input: (p) => ({ searchQuery: p.q || "Coffee shop", location: p.location || "London", maxResults: Number(p.max), includeSalesStrategy: false, includeWebsiteHealthScorecard: false, includeServiceRecommendations: false, includeTechnicalIntel: false, proxyConfiguration: { useApifyProxy: false } }),
     row: (r) => ({ title: r.businessName, sub: r.category || "", meta: [r.phone && r.phone !== "NA" ? r.phone : "", r.companyEmail && r.companyEmail !== "NA" ? r.companyEmail : "", r.address].filter(Boolean).join(" · "), url: r.website || r.url }),
   },
   "eventbrite-scraper": {
@@ -183,7 +183,7 @@ function priceNum() { const n = parseFloat(String(PRICE).replace(/[^0-9.]/g, "")
 // ---- per-record pricing ----
 // What the paying agent is charged PER RECORD, by Actor. Price for a call = records × rate.
 const RATES = {
-  "google-maps-leads-sales-intelligence-tool": 0.10, // premium leads
+  "google-maps-leads-sales-intelligence-tool": 0.05, // premium leads
   "amazon-scraper": 0.01,
   "flipkart-scraper": 0.008,
   "eventbrite-scraper": 0.006,
@@ -295,7 +295,7 @@ try {
         unpaidResponseBody: () => ({
           contentType: "application/json",
           body: {
-            note: "Sample preview. Pay $0.10/lead via x402 to receive live results.",
+            note: "Sample preview. Pay $0.05/lead via x402 to receive live results.",
             items: [
               { businessName: "Monmouth Coffee", category: "Coffee shop", phone: "+44 20 7232 3010", website: "https://www.monmouthcoffee.co.uk", companyEmail: "hello@monmouthcoffee.co.uk", address: "27 Monmouth St, London WC2H 9EU, UK", workingHours: { "Mon-Sat": "8 AM - 6 PM" } },
               { businessName: "Kaffeine", category: "Coffee shop", phone: "+44 20 7580 6755", website: "https://www.kaffeine.co.uk", companyEmail: "", address: "66 Great Titchfield St, London W1W 7QJ, UK", workingHours: { "Mon-Fri": "7:30 AM - 5 PM" } },
@@ -303,7 +303,7 @@ try {
             ],
           },
         }),
-        description: "Google Maps business leads on demand: business name, category, phone, website, email, address, hours. Priced $0.10 per lead (minimum 1, up to 1000). Query params: q (search, e.g. 'Coffee shop'), location (city/area, e.g. 'London'), max (number of leads). Works for any city worldwide.",
+        description: "Google Maps business leads on demand with key details including business name, category, phone, website, email, address, and operating hours. Get leads for $0.05 per record (minimum 1, up to 1,000). Simply enter your search query, target location, and required number of leads. Discover relevant business prospects in any city, anywhere in the world.\n\nPowered by Techforce Global — explore more at https://techforceglobal.com",
         mimeType: "application/json",
         extensions: {
           ...declareDiscoveryExtension({
