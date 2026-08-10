@@ -205,7 +205,7 @@ const CAIP = NETWORK === "base" ? "eip155:8453" : "eip155:84532";
 // Public HTTPS resource URL. MUST be https for the CDP Bazaar to accept discovery registration.
 // (Render provides RENDER_EXTERNAL_URL; falls back to an explicit PUBLIC_URL env, else undefined for local dev.)
 const PUBLIC_BASE = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || "";
-const PUBLIC_RESOURCE = PUBLIC_BASE ? `${PUBLIC_BASE.replace(/\/$/, "")}/api/run` : undefined;
+const PUBLIC_RESOURCE = PUBLIC_BASE ? `${PUBLIC_BASE.replace(/\/$/, "")}/api/business-leads` : undefined;
 // x402 v2 DynamicPrice: compute "$X" from the request's records × actor rate (reads x402 request context)
 function priceFromCtx(ctx) {
   const a = ctx.adapter;
@@ -257,7 +257,7 @@ app.get("/agent-pay/run", async (req, res) => {
     const client = new x402Client().register(CAIP, new ExactEvmClientScheme(account));
     const payFetch = wrapFetchWithPayment(globalThis.fetch.bind(globalThis), client);
     const qs = new URLSearchParams({ actor: key, q: req.query.q || "", location: req.query.location || "", max: String(req.query.max || 10) }).toString();
-    const r = await payFetch(`http://localhost:${PORT}/api/run?${qs}`, {
+    const r = await payFetch(`http://localhost:${PORT}/api/business-leads?${qs}`, {
       method: "GET",
       headers: cust ? { "x-apify-token": cust } : {},
     });
@@ -280,7 +280,7 @@ try {
     const resourceServer = new x402ResourceServer(facilitator).register("eip155:*", new ExactEvmServerScheme());
 
     const routes = {
-      "GET /api/run": {
+      "GET /api/business-leads": {
         accepts: {
           scheme: "exact",
           network: CAIP,
@@ -353,7 +353,7 @@ try {
     app.use(paymentMiddleware(routes, resourceServer));
 
     // Runs only after payment is verified/settled by the middleware.
-    app.get("/api/run", async (req, res) => {
+    app.get("/api/business-leads", async (req, res) => {
       const { key } = actorFromReq(req);
       const cust = customerToken(req);
       try {
