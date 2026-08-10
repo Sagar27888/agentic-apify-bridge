@@ -55,7 +55,11 @@ const ACTORS = {
     label: "Amazon Product Search",
     kind: "e-commerce",
     needs: ["q", "max"],
-    input: (p) => ({ searchKeywords: [p.q || "wireless earbuds"], maxItemsPerSearch: Number(p.max), amazonDomain: "www.amazon.in", proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] } }),
+    input: (p) => {
+      const allowed = ["www.amazon.com", "www.amazon.in", "www.amazon.co.uk", "www.amazon.de", "www.amazon.ca", "www.amazon.com.au", "www.amazon.ae"];
+      const amazonDomain = allowed.includes(p.domain) ? p.domain : "www.amazon.com";
+      return { searchKeywords: [p.q || "wireless earbuds"], maxItemsPerSearch: Number(p.max), maxPagesPerSearch: 20, amazonDomain, proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] } };
+    },
     row: (r) => ({ title: r.title, sub: r.priceRaw || (r.price != null ? r.price : ""), meta: [r.brand, r.rating ? "★" + r.rating : "", r.reviewsCount ? r.reviewsCount + " reviews" : ""].filter(Boolean).join(" · "), url: r.url }),
   },
   "google-maps-leads-sales-intelligence-tool": {
@@ -90,6 +94,7 @@ function paramsFromReq(req) {
   return {
     q: (req.query.q || "").toString(),
     location: (req.query.location || "").toString(),
+    domain: (req.query.domain || "").toString(),
     max: req.query.max,
   };
 }
@@ -184,7 +189,7 @@ function priceNum() { const n = parseFloat(String(PRICE).replace(/[^0-9.]/g, "")
 // What the paying agent is charged PER RECORD, by Actor. Price for a call = records × rate.
 const RATES = {
   "google-maps-leads-sales-intelligence-tool": 0.05, // premium leads
-  "amazon-scraper": 0.01,
+  "amazon-scraper": 0.03,
   "flipkart-scraper": 0.008,
   "eventbrite-scraper": 0.006,
 };
@@ -206,11 +211,14 @@ const CAIP = NETWORK === "base" ? "eip155:8453" : "eip155:84532";
 // (Render provides RENDER_EXTERNAL_URL; falls back to an explicit PUBLIC_URL env, else undefined for local dev.)
 const PUBLIC_BASE = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || "";
 const PUBLIC_RESOURCE = PUBLIC_BASE ? `${PUBLIC_BASE.replace(/\/$/, "")}/api/business-leads` : undefined;
-// x402 v2 DynamicPrice: compute "$X" from the request's records × actor rate (reads x402 request context)
-function priceFromCtx(ctx) {
+// Per-endpoint public https resource URL (each Actor = its own path = its own Bazaar entry).
+const resourceFor = (p) => (PUBLIC_BASE ? `${PUBLIC_BASE.replace(/\/$/, "")}${p}` : undefined);
+// x402 v2 DynamicPrice: compute "$X" from the request's records × actor rate (reads x402 request context).
+// actorKey pins the price to the endpoint's Actor (each paid path passes its own).
+function priceFromCtx(ctx, actorKey) {
   const a = ctx.adapter;
   const q = (n) => { const v = a.getQueryParam ? a.getQueryParam(n) : undefined; return Array.isArray(v) ? v[0] : v; };
-  const actor = q("actor") || "google-maps-leads-sales-intelligence-tool";
+  const actor = actorKey || q("actor") || "google-maps-leads-sales-intelligence-tool";
   const token = (a.getHeader && (a.getHeader("x-apify-token") || "")) || q("apify_token") || "";
   const records = amountFor(q("max"), token);
   return "$" + (records * rateFor(actor)).toFixed(4);
@@ -256,8 +264,13 @@ app.get("/agent-pay/run", async (req, res) => {
     // x402 v2 client: register the EVM 'exact' scheme for our network, signed by the payer wallet.
     const client = new x402Client().register(CAIP, new ExactEvmClientScheme(account));
     const payFetch = wrapFetchWithPayment(globalThis.fetch.bind(globalThis), client);
-    const qs = new URLSearchParams({ actor: key, q: req.query.q || "", location: req.query.location || "", max: String(req.query.max || 10) }).toString();
-    const r = await payFetch(`http://localhost:${PORT}/api/business-leads?${qs}`, {
+    const isAmazon = key === "amazon-scraper";
+    const targetPath = isAmazon ? "/api/amazon-products" : "/api/business-leads";
+    const params = isAmazon
+      ? { q: req.query.q || "", max: String(req.query.max || 10), domain: req.query.domain || "" }
+      : { actor: key, q: req.query.q || "", location: req.query.location || "", max: String(req.query.max || 10) };
+    const qs = new URLSearchParams(params).toString();
+    const r = await payFetch(`http://localhost:${PORT}${targetPath}?${qs}`, {
       method: "GET",
       headers: cust ? { "x-apify-token": cust } : {},
     });
@@ -285,7 +298,7 @@ try {
           scheme: "exact",
           network: CAIP,
           payTo: PAY_TO,
-          price: (ctx) => priceFromCtx(ctx), // dynamic per-record price
+          price: (ctx) => priceFromCtx(ctx, "google-maps-leads-sales-intelligence-tool"), // dynamic per-record price
         },
         resource: PUBLIC_RESOURCE, // pin to public https URL so the CDP Bazaar accepts discovery registration
         serviceName: "Google Maps Business Leads", // <=32 chars (Bazaar limit)
@@ -349,6 +362,77 @@ try {
           }),
         },
       },
+      "GET /api/amazon-products": {
+        accepts: {
+          scheme: "exact",
+          network: CAIP,
+          payTo: PAY_TO,
+          price: (ctx) => priceFromCtx(ctx, "amazon-scraper"), // dynamic per-record price
+        },
+        resource: resourceFor("/api/amazon-products"),
+        serviceName: "Amazon Product Scraper", // <=32 chars (Bazaar limit)
+        tags: ["amazon", "products", "e-commerce", "price-tracking", "scraper"],
+        unpaidResponseBody: () => ({
+          contentType: "application/json",
+          body: {
+            note: "Sample preview. Pay $0.03/record via x402 to receive live results.",
+            items: [
+              { asin: "B09JZXQ3P1", title: "Wireless Earbuds Bluetooth 5.3, 40H Playtime, IPX7 Waterproof", brand: "SoundCore", price: 29.99, priceRaw: "$29.99", currency: "USD", rating: 4.4, reviewsCount: 12873, availability: "In stock", thumbnailUrl: "https://m.media-amazon.com/images/I/61sample1.jpg", url: "https://www.amazon.com/dp/B09JZXQ3P1" },
+              { asin: "B0BDHWDR12", title: "Noise Cancelling Headphones Over Ear, 50H Playtime", brand: "Anker", price: 79.99, priceRaw: "$79.99", currency: "USD", rating: 4.6, reviewsCount: 5421, availability: "In stock", thumbnailUrl: "https://m.media-amazon.com/images/I/71sample2.jpg", url: "https://www.amazon.com/dp/B0BDHWDR12" },
+              { asin: "B07PXGQC1Q", title: "USB-C Wireless Earbuds, Fast Charging, 30H", brand: "JBL", price: 24.99, priceRaw: "$24.99", currency: "USD", rating: 4.2, reviewsCount: 9310, availability: "In stock", thumbnailUrl: "https://m.media-amazon.com/images/I/51sample3.jpg", url: "https://www.amazon.com/dp/B07PXGQC1Q" },
+            ],
+          },
+        }),
+        description: "Amazon product data on demand with key details including ASIN, title, brand, price, currency, rating, review count, availability, thumbnail, and product URL. Get results for $0.03 per record (minimum 1, up to 1,000). Enter your search keywords, optionally choose an Amazon marketplace (com, in, co.uk, de, ca, com.au, ae), and the number of products you need. Discover live Amazon product listings in seconds.\n\nPowered by Techforce Global — explore more at https://techforceglobal.com",
+        mimeType: "application/json",
+        extensions: {
+          ...declareDiscoveryExtension({
+            method: "GET",
+            input: {
+              q: "wireless earbuds",
+              max: 10,
+              domain: "www.amazon.com",
+            },
+            inputSchema: {
+              type: "object",
+              properties: {
+                q: { type: "string", description: "Search keywords, e.g. 'wireless earbuds'" },
+                max: { type: "integer", description: "Number of products to return (min 1, max 1000)" },
+                domain: { type: "string", description: "Amazon marketplace (optional, default www.amazon.com)", enum: ["www.amazon.com", "www.amazon.in", "www.amazon.co.uk", "www.amazon.de", "www.amazon.ca", "www.amazon.com.au", "www.amazon.ae"] },
+              },
+              required: ["q"],
+            },
+            output: {
+              schema: {
+                type: "object",
+                properties: {
+                  items: {
+                    type: "array",
+                    description: "Array of Amazon products",
+                    items: {
+                      type: "object",
+                      properties: {
+                        asin: { type: "string", description: "Amazon Standard Identification Number" },
+                        title: { type: "string", description: "Product title" },
+                        brand: { type: "string", description: "Brand name" },
+                        price: { type: "number", description: "Numeric price" },
+                        priceRaw: { type: "string", description: "Formatted price with currency symbol" },
+                        currency: { type: "string", description: "Currency code" },
+                        rating: { type: "number", description: "Average rating out of 5" },
+                        reviewsCount: { type: "integer", description: "Number of reviews" },
+                        availability: { type: "string", description: "Stock availability" },
+                        thumbnailUrl: { type: "string", description: "Product image URL" },
+                        url: { type: "string", description: "Product page URL" },
+                      },
+                    },
+                  },
+                },
+              },
+              example: { items: [{ asin: "B09JZXQ3P1", title: "Wireless Earbuds Bluetooth 5.3, 40H Playtime", brand: "SoundCore", price: 29.99, priceRaw: "$29.99", currency: "USD", rating: 4.4, reviewsCount: 12873, availability: "In stock", thumbnailUrl: "https://m.media-amazon.com/images/I/61sample1.jpg", url: "https://www.amazon.com/dp/B09JZXQ3P1" }] },
+            },
+          }),
+        },
+      },
     };
     app.use(paymentMiddleware(routes, resourceServer));
 
@@ -361,6 +445,22 @@ try {
         const result = await runActor(key, paramsFromReq(req), cust);
         result.priceUsd = pr.priceUsd;
         result.ratePerRecord = pr.rate;
+        res.json(withMoney(result, true));
+      } catch (e) {
+        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+      }
+    });
+
+    // Amazon Product Scraper — dedicated paid path (own price $0.03/record).
+    app.get("/api/amazon-products", async (req, res) => {
+      const key = "amazon-scraper";
+      const cust = customerToken(req);
+      try {
+        const records = amountFor(req.query.max, cust);
+        const rate = rateFor(key);
+        const result = await runActor(key, paramsFromReq(req), cust);
+        result.priceUsd = +(records * rate).toFixed(4);
+        result.ratePerRecord = rate;
         res.json(withMoney(result, true));
       } catch (e) {
         res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
