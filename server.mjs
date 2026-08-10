@@ -301,7 +301,7 @@ try {
           price: (ctx) => priceFromCtx(ctx, "google-maps-leads-sales-intelligence-tool"), // dynamic per-record price
         },
         resource: PUBLIC_RESOURCE, // pin to public https URL so the CDP Bazaar accepts discovery registration
-        serviceName: "Google Maps Business Leads", // <=32 chars (Bazaar limit)
+        serviceName: "Techforce Agents", // uniform across endpoints => page title = "Techforce Agents"
         tags: ["leads", "google-maps", "sales-intelligence", "b2b", "scraper"],
         // Real sample returned in the 402 body for unpaid requests, so marketplace cards
         // (and any client) can preview the true output shape without paying.
@@ -370,7 +370,7 @@ try {
           price: (ctx) => priceFromCtx(ctx, "amazon-scraper"), // dynamic per-record price
         },
         resource: resourceFor("/api/amazon-products"),
-        serviceName: "Amazon Product Scraper", // <=32 chars (Bazaar limit)
+        serviceName: "Techforce Agents", // uniform across endpoints => page title = "Techforce Agents"
         tags: ["amazon", "products", "e-commerce", "price-tracking", "scraper"],
         unpaidResponseBody: () => ({
           contentType: "application/json",
