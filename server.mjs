@@ -320,7 +320,7 @@ try {
         },
         resource: PUBLIC_RESOURCE, // pin to public https URL so the CDP Bazaar accepts discovery registration
         serviceName: "Techforce Agents Business Leads", // shared prefix "Techforce Agents" => page header; card shows "Business Leads"
-        tags: ["leads", "google-maps", "sales-intelligence", "b2b", "scraper"],
+        tags: ["data", "web-scraping", "data-extraction", "leads", "google-maps", "sales-intelligence", "b2b", "scraper"],
         // Real sample returned in the 402 body for unpaid requests, so marketplace cards
         // (and any client) can preview the true output shape without paying.
         unpaidResponseBody: () => ({
@@ -389,7 +389,7 @@ try {
         },
         resource: resourceFor("/api/amazon-products"),
         serviceName: "Techforce Agents Amazon Products", // shared prefix "Techforce Agents" => page header; card shows "Amazon Products"
-        tags: ["amazon", "products", "e-commerce", "price-tracking", "scraper"],
+        tags: ["data", "web-scraping", "data-extraction", "amazon", "products", "e-commerce", "price-tracking", "scraper"],
         unpaidResponseBody: () => ({
           contentType: "application/json",
           body: {
@@ -460,7 +460,7 @@ try {
         },
         resource: resourceFor("/api/all-events"),
         serviceName: "Techforce Agents All Events", // shared prefix "Techforce Agents" => page header; card shows "All Events"
-        tags: ["events", "tickets", "local-events", "allevents", "concerts"],
+        tags: ["data", "web-scraping", "data-extraction", "events", "tickets", "local-events", "allevents", "concerts"],
         unpaidResponseBody: () => ({
           contentType: "application/json",
           body: {
