@@ -78,6 +78,14 @@ const ACTORS = {
     input: (p) => ({ location: p.location || "india--ahmedabad", category: "All Events", maxEvents: Number(p.max) }),
     row: (r) => ({ title: r.name, sub: r.start || "", meta: [r.venue && r.venue.city ? r.venue.city : "", r.venue && r.venue.name ? String(r.venue.name).slice(0, 60) : ""].filter(Boolean).join(" · "), url: r.url }),
   },
+  "all-events-scraper": {
+    apify: "techforce.global~all-events-scraper",
+    label: "All Events",
+    kind: "events",
+    needs: ["location", "max"],
+    input: (p) => ({ location: p.location || "London", limit: Math.min(Number(p.max), 100), proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"], apifyProxyCountry: "IN" } }),
+    row: (r) => ({ title: r.name || r.title || r.eventName, sub: r.startDate || r.date || r.start || r.datetime || "", meta: [r.venue || r.venueName, r.city || r.location].filter(Boolean).join(" · "), url: r.url || r.link || r.eventUrl }),
+  },
 };
 
 const app = express();
@@ -192,7 +200,16 @@ const RATES = {
   "amazon-scraper": 0.03,
   "flipkart-scraper": 0.008,
   "eventbrite-scraper": 0.006,
+  "all-events-scraper": 0.005,
 };
+// Per-actor hard ceiling on records (some Apify actors cap what they return).
+// Protects buyers from being charged for records the actor cannot deliver.
+const ACTOR_MAX = { "all-events-scraper": 100 };
+function recordsFor(actorKey, maxParam, token) {
+  const n = amountFor(maxParam, token);
+  const cap = ACTOR_MAX[actorKey];
+  return cap ? Math.min(n, cap) : n;
+}
 const DEFAULT_RATE = Number(process.env.RATE_PER_RECORD || 0.01);
 const rateFor = (key) => (RATES[key] != null ? RATES[key] : DEFAULT_RATE);
 
@@ -220,7 +237,7 @@ function priceFromCtx(ctx, actorKey) {
   const q = (n) => { const v = a.getQueryParam ? a.getQueryParam(n) : undefined; return Array.isArray(v) ? v[0] : v; };
   const actor = actorKey || q("actor") || "google-maps-leads-sales-intelligence-tool";
   const token = (a.getHeader && (a.getHeader("x-apify-token") || "")) || q("apify_token") || "";
-  const records = amountFor(q("max"), token);
+  const records = recordsFor(actor, q("max"), token);
   return "$" + (records * rateFor(actor)).toFixed(4);
 }
 
@@ -264,11 +281,12 @@ app.get("/agent-pay/run", async (req, res) => {
     // x402 v2 client: register the EVM 'exact' scheme for our network, signed by the payer wallet.
     const client = new x402Client().register(CAIP, new ExactEvmClientScheme(account));
     const payFetch = wrapFetchWithPayment(globalThis.fetch.bind(globalThis), client);
-    const isAmazon = key === "amazon-scraper";
-    const targetPath = isAmazon ? "/api/amazon-products" : "/api/business-leads";
-    const params = isAmazon
-      ? { q: req.query.q || "", max: String(req.query.max || 10), domain: req.query.domain || "" }
-      : { actor: key, q: req.query.q || "", location: req.query.location || "", max: String(req.query.max || 10) };
+    const PATHS = { "amazon-scraper": "/api/amazon-products", "all-events-scraper": "/api/all-events" };
+    const targetPath = PATHS[key] || "/api/business-leads";
+    let params;
+    if (key === "amazon-scraper") params = { q: req.query.q || "", max: String(req.query.max || 10), domain: req.query.domain || "" };
+    else if (key === "all-events-scraper") params = { location: req.query.location || "", max: String(req.query.max || 10) };
+    else params = { actor: key, q: req.query.q || "", location: req.query.location || "", max: String(req.query.max || 10) };
     const qs = new URLSearchParams(params).toString();
     const r = await payFetch(`http://localhost:${PORT}${targetPath}?${qs}`, {
       method: "GET",
@@ -433,6 +451,70 @@ try {
           }),
         },
       },
+      "GET /api/all-events": {
+        accepts: {
+          scheme: "exact",
+          network: CAIP,
+          payTo: PAY_TO,
+          price: (ctx) => priceFromCtx(ctx, "all-events-scraper"), // dynamic per-record price
+        },
+        resource: resourceFor("/api/all-events"),
+        serviceName: "Techforce Agents All Events", // shared prefix "Techforce Agents" => page header; card shows "All Events"
+        tags: ["events", "tickets", "local-events", "allevents", "concerts"],
+        unpaidResponseBody: () => ({
+          contentType: "application/json",
+          body: {
+            note: "Sample preview. Pay $0.005/record via x402 to receive live results.",
+            items: [
+              { name: "Live Jazz Night at Ronnie Scott's", category: "Concert", startDate: "2026-09-12 20:00", venue: "Ronnie Scott's Jazz Club", city: "London", url: "https://allevents.in/london/live-jazz-night" },
+              { name: "London Tech Startup Meetup", category: "Networking", startDate: "2026-09-15 18:30", venue: "WeWork Moorgate", city: "London", url: "https://allevents.in/london/tech-startup-meetup" },
+              { name: "Weekend Food & Craft Market", category: "Festival", startDate: "2026-09-20 10:00", venue: "Southbank Centre", city: "London", url: "https://allevents.in/london/food-craft-market" },
+            ],
+          },
+        }),
+        description: "Local events on demand from AllEvents — event name, category, date & time, venue, city, and ticket link. Get results for $0.005 per record (minimum 1, up to 100). Simply enter a city and the number of events you want. Discover concerts, workshops, festivals, and more.\n\nPowered by Techforce Global — explore more at https://techforceglobal.com",
+        mimeType: "application/json",
+        extensions: {
+          ...declareDiscoveryExtension({
+            method: "GET",
+            input: {
+              location: "London",
+              max: 20,
+            },
+            inputSchema: {
+              type: "object",
+              properties: {
+                location: { type: "string", description: "City to fetch events for, e.g. 'London'" },
+                max: { type: "integer", description: "Number of events to return (min 1, max 100)" },
+              },
+              required: ["location"],
+            },
+            output: {
+              schema: {
+                type: "object",
+                properties: {
+                  items: {
+                    type: "array",
+                    description: "Array of local events",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string", description: "Event name" },
+                        category: { type: "string", description: "Event category" },
+                        startDate: { type: "string", description: "Event date & time" },
+                        venue: { type: "string", description: "Venue name" },
+                        city: { type: "string", description: "City" },
+                        url: { type: "string", description: "Event / ticket URL" },
+                      },
+                    },
+                  },
+                },
+              },
+              example: { items: [{ name: "Live Jazz Night at Ronnie Scott's", category: "Concert", startDate: "2026-09-12 20:00", venue: "Ronnie Scott's Jazz Club", city: "London", url: "https://allevents.in/london/live-jazz-night" }] },
+            },
+          }),
+        },
+      },
     };
     app.use(paymentMiddleware(routes, resourceServer));
 
@@ -456,7 +538,23 @@ try {
       const key = "amazon-scraper";
       const cust = customerToken(req);
       try {
-        const records = amountFor(req.query.max, cust);
+        const records = recordsFor(key, req.query.max, cust);
+        const rate = rateFor(key);
+        const result = await runActor(key, paramsFromReq(req), cust);
+        result.priceUsd = +(records * rate).toFixed(4);
+        result.ratePerRecord = rate;
+        res.json(withMoney(result, true));
+      } catch (e) {
+        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+      }
+    });
+
+    // All Events (AllEvents.in) — dedicated paid path (own price $0.005/record, capped at 100).
+    app.get("/api/all-events", async (req, res) => {
+      const key = "all-events-scraper";
+      const cust = customerToken(req);
+      try {
+        const records = recordsFor(key, req.query.max, cust);
         const rate = rateFor(key);
         const result = await runActor(key, paramsFromReq(req), cust);
         result.priceUsd = +(records * rate).toFixed(4);
