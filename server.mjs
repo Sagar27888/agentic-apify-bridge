@@ -84,7 +84,7 @@ const ACTORS = {
     kind: "events",
     needs: ["location", "max"],
     input: (p) => ({ location: p.location || "London", limit: Math.min(Number(p.max), 100), proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"], apifyProxyCountry: "IN" } }),
-    row: (r) => ({ title: r.name || r.title || r.eventName, sub: r.startDate || r.date || r.start || r.datetime || "", meta: [r.venue || r.venueName, r.city || r.location].filter(Boolean).join(" · "), url: r.url || r.link || r.eventUrl }),
+    row: (r) => ({ title: r.Title, sub: r.DateTime || "", meta: [r.Location, r.Interested].filter(Boolean).join(" · "), url: r.URL }),
   },
 };
 
@@ -466,9 +466,9 @@ try {
           body: {
             note: "Sample preview. Pay $0.005/record via x402 to receive live results.",
             items: [
-              { name: "Live Jazz Night at Ronnie Scott's", category: "Concert", startDate: "2026-09-12 20:00", venue: "Ronnie Scott's Jazz Club", city: "London", url: "https://allevents.in/london/live-jazz-night" },
-              { name: "London Tech Startup Meetup", category: "Networking", startDate: "2026-09-15 18:30", venue: "WeWork Moorgate", city: "London", url: "https://allevents.in/london/tech-startup-meetup" },
-              { name: "Weekend Food & Craft Market", category: "Festival", startDate: "2026-09-20 10:00", venue: "Southbank Centre", city: "London", url: "https://allevents.in/london/food-craft-market" },
+              { Title: "The Lion King at Lyceum Theatre - London", URL: "https://allevents.in/london/the-lion-king-at-lyceum-theatre-london", DateTime: "Tue, 11 Aug 07:30 PM + 175 more", Location: "Lyceum Theatre - London", Interested: "95+ Interested" },
+              { Title: "London Tech Startup Meetup", URL: "https://allevents.in/london/tech-startup-meetup", DateTime: "Mon, 15 Sep 06:30 PM", Location: "WeWork Moorgate - London", Interested: "40+ Interested" },
+              { Title: "Weekend Food & Craft Market", URL: "https://allevents.in/london/food-craft-market", DateTime: "Sat, 20 Sep 10:00 AM", Location: "Southbank Centre - London", Interested: "120+ Interested" },
             ],
           },
         }),
@@ -499,18 +499,17 @@ try {
                     items: {
                       type: "object",
                       properties: {
-                        name: { type: "string", description: "Event name" },
-                        category: { type: "string", description: "Event category" },
-                        startDate: { type: "string", description: "Event date & time" },
-                        venue: { type: "string", description: "Venue name" },
-                        city: { type: "string", description: "City" },
-                        url: { type: "string", description: "Event / ticket URL" },
+                        Title: { type: "string", description: "Event title" },
+                        DateTime: { type: "string", description: "Event date & time" },
+                        Location: { type: "string", description: "Venue / location" },
+                        Interested: { type: "string", description: "Interest count" },
+                        URL: { type: "string", description: "Event / ticket URL" },
                       },
                     },
                   },
                 },
               },
-              example: { items: [{ name: "Live Jazz Night at Ronnie Scott's", category: "Concert", startDate: "2026-09-12 20:00", venue: "Ronnie Scott's Jazz Club", city: "London", url: "https://allevents.in/london/live-jazz-night" }] },
+              example: { items: [{ Title: "The Lion King at Lyceum Theatre - London", DateTime: "Tue, 11 Aug 07:30 PM + 175 more", Location: "Lyceum Theatre - London", Interested: "95+ Interested", URL: "https://allevents.in/london/the-lion-king-at-lyceum-theatre-london" }] },
             },
           }),
         },
