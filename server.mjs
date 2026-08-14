@@ -551,7 +551,7 @@ try {
             ],
           },
         }),
-        description: "LinkedIn candidate search on demand — full name, job title/headline, profile URL, and bio snippet. Enter a job role, optional location and seniority, and the number of candidates. Fast talent sourcing for recruiters and AI hiring agents.\n\nPowered by Techforce Global — explore more at https://techforceglobal.com",
+        description: "LinkedIn candidate search on demand — full name, job title/headline, profile URL, and bio snippet. Priced $0.05 per candidate (minimum 1, up to 50 per search). Enter a job role, optional location and seniority, and the number of candidates. Fast talent sourcing for recruiters and AI hiring agents.\n\nPowered by Techforce Global — explore more at https://techforceglobal.com",
         mimeType: "application/json",
         extensions: {
           ...declareDiscoveryExtension({
