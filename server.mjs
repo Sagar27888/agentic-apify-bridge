@@ -86,6 +86,18 @@ const ACTORS = {
     input: (p) => ({ location: p.location || "London", limit: Math.min(Number(p.max), 100), proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"], apifyProxyCountry: "IN" } }),
     row: (r) => ({ title: r.Title, sub: r.DateTime || "", meta: [r.Location, r.Interested].filter(Boolean).join(" · "), url: r.URL }),
   },
+  "linkedin-candidate-search": {
+    apify: "techforce.global~linkedin-candidate-search",
+    label: "LinkedIn Talent",
+    kind: "recruiting",
+    needs: ["role", "max"],
+    input: (p) => {
+      const inp = { job_role: p.role || "Software Engineer", location: p.location ? [p.location] : ["New York"], max_profiles: Math.min(Number(p.max), 50) };
+      if (p.seniority) inp.seniority = p.seniority;
+      return inp;
+    },
+    row: (r) => ({ title: r.name, sub: r.title || "", meta: r.snippet ? String(r.snippet).slice(0, 100) : "", url: r.profile_url }),
+  },
 };
 
 const app = express();
@@ -103,6 +115,8 @@ function paramsFromReq(req) {
     q: (req.query.q || "").toString(),
     location: (req.query.location || "").toString(),
     domain: (req.query.domain || "").toString(),
+    role: (req.query.role || "").toString(),
+    seniority: (req.query.seniority || "").toString(),
     max: req.query.max,
   };
 }
@@ -201,10 +215,11 @@ const RATES = {
   "flipkart-scraper": 0.008,
   "eventbrite-scraper": 0.006,
   "all-events-scraper": 0.005,
+  "linkedin-candidate-search": 0.05,
 };
 // Per-actor hard ceiling on records (some Apify actors cap what they return).
 // Protects buyers from being charged for records the actor cannot deliver.
-const ACTOR_MAX = { "all-events-scraper": 100 };
+const ACTOR_MAX = { "all-events-scraper": 100, "linkedin-candidate-search": 50 };
 function recordsFor(actorKey, maxParam, token) {
   const n = amountFor(maxParam, token);
   const cap = ACTOR_MAX[actorKey];
@@ -281,11 +296,12 @@ app.get("/agent-pay/run", async (req, res) => {
     // x402 v2 client: register the EVM 'exact' scheme for our network, signed by the payer wallet.
     const client = new x402Client().register(CAIP, new ExactEvmClientScheme(account));
     const payFetch = wrapFetchWithPayment(globalThis.fetch.bind(globalThis), client);
-    const PATHS = { "amazon-scraper": "/api/amazon-products", "all-events-scraper": "/api/all-events" };
+    const PATHS = { "amazon-scraper": "/api/amazon-products", "all-events-scraper": "/api/all-events", "linkedin-candidate-search": "/api/linkedin-candidates" };
     const targetPath = PATHS[key] || "/api/business-leads";
     let params;
     if (key === "amazon-scraper") params = { q: req.query.q || "", max: String(req.query.max || 10), domain: req.query.domain || "" };
     else if (key === "all-events-scraper") params = { location: req.query.location || "", max: String(req.query.max || 10) };
+    else if (key === "linkedin-candidate-search") params = { role: req.query.role || "", location: req.query.location || "", seniority: req.query.seniority || "", max: String(req.query.max || 10) };
     else params = { actor: key, q: req.query.q || "", location: req.query.location || "", max: String(req.query.max || 10) };
     const qs = new URLSearchParams(params).toString();
     const r = await payFetch(`http://localhost:${PORT}${targetPath}?${qs}`, {
@@ -514,6 +530,72 @@ try {
           }),
         },
       },
+      "GET /api/linkedin-candidates": {
+        accepts: {
+          scheme: "exact",
+          network: CAIP,
+          payTo: PAY_TO,
+          price: (ctx) => priceFromCtx(ctx, "linkedin-candidate-search"), // dynamic per-record price
+        },
+        resource: resourceFor("/api/linkedin-candidates"),
+        serviceName: "Techforce Agents LinkedIn Talent", // shared prefix "Techforce Agents" => page header; card shows "LinkedIn Talent"
+        tags: ["data", "linkedin", "recruiting", "candidates", "talent", "hiring"],
+        unpaidResponseBody: () => ({
+          contentType: "application/json",
+          body: {
+            note: "Sample preview. Pay $0.05/record via x402 to receive live results.",
+            items: [
+              { name: "Priya Sharma", title: "Senior Java Developer at Fintech Co.", profile_url: "https://www.linkedin.com/in/sample-priya-sharma", snippet: "8+ yrs Java, Spring Boot, microservices, AWS. Based in London." },
+              { name: "James Okoro", title: "Lead Backend Engineer", profile_url: "https://www.linkedin.com/in/sample-james-okoro", snippet: "Java, Kotlin, distributed systems. Ex-fintech, hiring-ready." },
+              { name: "Mei Lin", title: "Java Developer | Cloud Native", profile_url: "https://www.linkedin.com/in/sample-mei-lin", snippet: "6 yrs Java, Kubernetes, GCP. Open to new roles." },
+            ],
+          },
+        }),
+        description: "LinkedIn candidate search on demand — full name, job title/headline, profile URL, and bio snippet. Enter a job role, optional location and seniority, and the number of candidates. Fast talent sourcing for recruiters and AI hiring agents.\n\nPowered by Techforce Global — explore more at https://techforceglobal.com",
+        mimeType: "application/json",
+        extensions: {
+          ...declareDiscoveryExtension({
+            method: "GET",
+            input: {
+              role: "Java Developer",
+              location: "London",
+              seniority: "Senior",
+              max: 10,
+            },
+            inputSchema: {
+              type: "object",
+              properties: {
+                role: { type: "string", description: "Job role / title to search, e.g. 'Java Developer'" },
+                location: { type: "string", description: "City or region (optional, default New York)" },
+                seniority: { type: "string", description: "Seniority (optional)", enum: ["Junior", "Mid", "Senior", "Lead", "Principal", "Staff", "Director"] },
+                max: { type: "integer", description: "Number of candidates to return (min 1, max 50)" },
+              },
+              required: ["role"],
+            },
+            output: {
+              schema: {
+                type: "object",
+                properties: {
+                  items: {
+                    type: "array",
+                    description: "Array of LinkedIn candidates",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string", description: "Candidate full name" },
+                        title: { type: "string", description: "Job title / LinkedIn headline" },
+                        profile_url: { type: "string", description: "LinkedIn profile URL" },
+                        snippet: { type: "string", description: "Short bio / description" },
+                      },
+                    },
+                  },
+                },
+              },
+              example: { items: [{ name: "Priya Sharma", title: "Senior Java Developer at Fintech Co.", profile_url: "https://www.linkedin.com/in/sample-priya-sharma", snippet: "8+ yrs Java, Spring Boot, microservices, AWS. Based in London." }] },
+            },
+          }),
+        },
+      },
     };
     app.use(paymentMiddleware(routes, resourceServer));
 
@@ -551,6 +633,22 @@ try {
     // All Events (AllEvents.in) — dedicated paid path (own price $0.005/record, capped at 100).
     app.get("/api/all-events", async (req, res) => {
       const key = "all-events-scraper";
+      const cust = customerToken(req);
+      try {
+        const records = recordsFor(key, req.query.max, cust);
+        const rate = rateFor(key);
+        const result = await runActor(key, paramsFromReq(req), cust);
+        result.priceUsd = +(records * rate).toFixed(4);
+        result.ratePerRecord = rate;
+        res.json(withMoney(result, true));
+      } catch (e) {
+        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+      }
+    });
+
+    // LinkedIn Talent — dedicated paid path (own price $0.05/record, capped at 50).
+    app.get("/api/linkedin-candidates", async (req, res) => {
+      const key = "linkedin-candidate-search";
       const cust = customerToken(req);
       try {
         const records = recordsFor(key, req.query.max, cust);
