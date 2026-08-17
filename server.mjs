@@ -187,8 +187,8 @@ async function runActor(actorKey, params, token) {
     return { actor: actorKey, label: def.label, billedTo, account: "(sample)", platformFeeUsd: 0, durationSec: 0, runId: null, sample: true, items: sampleItems(params.max), rows: sampleItems(params.max) };
   }
 
-  // resolve how many to scrape: floor MIN_RESULTS; ceiling CAP_OUR on our token, uncapped on customer token
-  const amount = amountFor(params.max, token);
+  // resolve how many to scrape: per-actor floor/ceiling (recordsFor), so delivery matches what the buyer is charged
+  const amount = recordsFor(actorKey, params.max, token);
   const input = def.input({ ...params, max: amount });
   // 1) start the run (async) so we can read its usage/cost afterward
   const start = await fetch(`https://api.apify.com/v2/acts/${def.apify}/runs?token=${useToken}`, {
@@ -247,8 +247,11 @@ const RATES = {
 // Per-actor hard ceiling on records (some Apify actors cap what they return).
 // Protects buyers from being charged for records the actor cannot deliver.
 const ACTOR_MAX = { "all-events-scraper": 100, "linkedin-candidate-search": 50, "youtube-transcript-scraper": 1, "all-jobs-scraper": 100 };
+// Per-actor MINIMUM records (some Apify actors reject requests below a floor, e.g. all-jobs needs >= 10).
+const ACTOR_MIN = { "all-jobs-scraper": 10 };
 function recordsFor(actorKey, maxParam, token) {
-  const n = amountFor(maxParam, token);
+  const floor = ACTOR_MIN[actorKey] || MIN_RESULTS;
+  let n = Math.max(amountFor(maxParam, token), floor);
   const cap = ACTOR_MAX[actorKey];
   return cap ? Math.min(n, cap) : n;
 }
@@ -709,7 +712,7 @@ try {
             ],
           },
         }),
-        description: "Job listings on demand from 26+ boards worldwide (Indeed, Adzuna, Reed, RemoteOK, Jooble, and more) — title, company, location, salary, job type, description, posting date, and apply URL. Get results for $0.01 per record (minimum 1, up to 100). Enter a keyword, optional location and job type, and how many jobs you want. One call, many boards.\n\nPowered by Techforce Global — explore more at https://techforceglobal.com",
+        description: "Job listings on demand from 26+ boards worldwide (Indeed, Adzuna, Reed, RemoteOK, Jooble, and more) — title, company, location, salary, job type, description, posting date, and apply URL. Get results for $0.01 per record (minimum 10, up to 100). Enter a keyword, optional location and job type, and how many jobs you want. One call, many boards.\n\nPowered by Techforce Global — explore more at https://techforceglobal.com",
         mimeType: "application/json",
         extensions: {
           ...declareDiscoveryExtension({
@@ -726,7 +729,7 @@ try {
                 keyword: { type: "string", description: "Job title, skill, or company to search, e.g. 'Java Developer'" },
                 location: { type: "string", description: "City or region (optional)" },
                 job_type: { type: "string", description: "Job type (optional)", enum: ["all", "fulltime", "parttime", "contract", "internship"] },
-                max: { type: "integer", description: "Number of jobs to return (min 1, max 100)" },
+                max: { type: "integer", description: "Number of jobs to return (min 10, max 100)" },
               },
               required: ["keyword"],
             },
