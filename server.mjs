@@ -106,6 +106,19 @@ const ACTORS = {
     input: (p) => ({ videoUrl: p.videoUrl || "", language: p.language || "en", translate: true, proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] } }),
     row: (r) => ({ title: r.videoId || r.videoUrl, sub: r.language || "", meta: r.segmentCount != null ? r.segmentCount + " segments" : "", url: r.videoUrl }),
   },
+  "all-jobs-scraper": {
+    apify: "techforce.global~all-jobs-scraper",
+    label: "Job Listings",
+    kind: "jobs",
+    needs: ["keyword", "max"],
+    input: (p) => {
+      const inp = { keyword: p.keyword || "Software Engineer", max_results: Math.min(Number(p.max), 100) };
+      if (p.location) inp.location = p.location;
+      if (p.job_type) inp.job_type = p.job_type;
+      return inp;
+    },
+    row: (r) => ({ title: r.title, sub: r.company || "", meta: [r.location, r.salary, r.job_type].filter(Boolean).join(" · "), url: r.url }),
+  },
 };
 
 const app = express();
@@ -127,6 +140,8 @@ function paramsFromReq(req) {
     seniority: (req.query.seniority || "").toString(),
     videoUrl: (req.query.videoUrl || "").toString(),
     language: (req.query.language || "").toString(),
+    keyword: (req.query.keyword || "").toString(),
+    job_type: (req.query.job_type || "").toString(),
     max: req.query.max,
   };
 }
@@ -227,10 +242,11 @@ const RATES = {
   "all-events-scraper": 0.005,
   "linkedin-candidate-search": 0.05,
   "youtube-transcript-scraper": 0.20, // FLAT per transcript (1 video/call); Apify cost $0.10/run
+  "all-jobs-scraper": 0.01,
 };
 // Per-actor hard ceiling on records (some Apify actors cap what they return).
 // Protects buyers from being charged for records the actor cannot deliver.
-const ACTOR_MAX = { "all-events-scraper": 100, "linkedin-candidate-search": 50, "youtube-transcript-scraper": 1 };
+const ACTOR_MAX = { "all-events-scraper": 100, "linkedin-candidate-search": 50, "youtube-transcript-scraper": 1, "all-jobs-scraper": 100 };
 function recordsFor(actorKey, maxParam, token) {
   const n = amountFor(maxParam, token);
   const cap = ACTOR_MAX[actorKey];
@@ -307,13 +323,14 @@ app.get("/agent-pay/run", async (req, res) => {
     // x402 v2 client: register the EVM 'exact' scheme for our network, signed by the payer wallet.
     const client = new x402Client().register(CAIP, new ExactEvmClientScheme(account));
     const payFetch = wrapFetchWithPayment(globalThis.fetch.bind(globalThis), client);
-    const PATHS = { "amazon-scraper": "/api/amazon-products", "all-events-scraper": "/api/all-events", "linkedin-candidate-search": "/api/linkedin-candidates", "youtube-transcript-scraper": "/api/youtube-transcript" };
+    const PATHS = { "amazon-scraper": "/api/amazon-products", "all-events-scraper": "/api/all-events", "linkedin-candidate-search": "/api/linkedin-candidates", "youtube-transcript-scraper": "/api/youtube-transcript", "all-jobs-scraper": "/api/all-jobs" };
     const targetPath = PATHS[key] || "/api/business-leads";
     let params;
     if (key === "amazon-scraper") params = { q: req.query.q || "", max: String(req.query.max || 10), domain: req.query.domain || "" };
     else if (key === "all-events-scraper") params = { location: req.query.location || "", max: String(req.query.max || 10) };
     else if (key === "linkedin-candidate-search") params = { role: req.query.role || "", location: req.query.location || "", seniority: req.query.seniority || "", max: String(req.query.max || 10) };
     else if (key === "youtube-transcript-scraper") params = { videoUrl: req.query.videoUrl || "", language: req.query.language || "" };
+    else if (key === "all-jobs-scraper") params = { keyword: req.query.keyword || "", location: req.query.location || "", job_type: req.query.job_type || "", max: String(req.query.max || 10) };
     else params = { actor: key, q: req.query.q || "", location: req.query.location || "", max: String(req.query.max || 10) };
     const qs = new URLSearchParams(params).toString();
     const r = await payFetch(`http://localhost:${PORT}${targetPath}?${qs}`, {
@@ -671,6 +688,79 @@ try {
           }),
         },
       },
+      "GET /api/all-jobs": {
+        accepts: {
+          scheme: "exact",
+          network: CAIP,
+          payTo: PAY_TO,
+          price: (ctx) => priceFromCtx(ctx, "all-jobs-scraper"), // dynamic per-record price
+        },
+        resource: resourceFor("/api/all-jobs"),
+        serviceName: "Techforce Agents Job Listings", // shared prefix "Techforce Agents" => page header; card shows "Job Listings"
+        tags: ["data", "jobs", "hiring", "careers", "job-board", "web-scraping"],
+        unpaidResponseBody: () => ({
+          contentType: "application/json",
+          body: {
+            note: "Sample preview. Pay $0.01/record via x402 to receive live results.",
+            items: [
+              { source: "Indeed", title: "Senior Java Developer", company: "Fintech Ltd", location: "London, UK", remote: false, job_type: "fulltime", salary: "£70,000 - £90,000", description: "Design and build scalable microservices in Java/Spring Boot...", url: "https://uk.indeed.com/viewjob?jk=sample1", posted_date: "2026-08-12", tags: ["java", "spring", "microservices"] },
+              { source: "RemoteOK", title: "Backend Engineer (Java)", company: "CloudScale", location: "Remote", remote: true, job_type: "fulltime", salary: "$120k - $150k", description: "Remote-first backend role, Java + AWS...", url: "https://remoteok.com/remote-jobs/sample2", posted_date: "2026-08-13", tags: ["java", "aws", "remote"] },
+              { source: "Reed", title: "Java Contractor", company: "Digiterre", location: "London", remote: false, job_type: "contract", salary: "£550/day", description: "6-month contract, trading systems...", url: "https://www.reed.co.uk/jobs/sample3", posted_date: "2026-08-11", tags: ["java", "contract"] },
+            ],
+          },
+        }),
+        description: "Job listings on demand from 26+ boards worldwide (Indeed, Adzuna, Reed, RemoteOK, Jooble, and more) — title, company, location, salary, job type, description, posting date, and apply URL. Get results for $0.01 per record (minimum 1, up to 100). Enter a keyword, optional location and job type, and how many jobs you want. One call, many boards.\n\nPowered by Techforce Global — explore more at https://techforceglobal.com",
+        mimeType: "application/json",
+        extensions: {
+          ...declareDiscoveryExtension({
+            method: "GET",
+            input: {
+              keyword: "Java Developer",
+              location: "London",
+              job_type: "fulltime",
+              max: 20,
+            },
+            inputSchema: {
+              type: "object",
+              properties: {
+                keyword: { type: "string", description: "Job title, skill, or company to search, e.g. 'Java Developer'" },
+                location: { type: "string", description: "City or region (optional)" },
+                job_type: { type: "string", description: "Job type (optional)", enum: ["all", "fulltime", "parttime", "contract", "internship"] },
+                max: { type: "integer", description: "Number of jobs to return (min 1, max 100)" },
+              },
+              required: ["keyword"],
+            },
+            output: {
+              schema: {
+                type: "object",
+                properties: {
+                  items: {
+                    type: "array",
+                    description: "Array of job listings",
+                    items: {
+                      type: "object",
+                      properties: {
+                        source: { type: "string", description: "Job board source" },
+                        title: { type: "string", description: "Job title" },
+                        company: { type: "string", description: "Company name" },
+                        location: { type: "string", description: "Job location" },
+                        remote: { type: "boolean", description: "Remote flag" },
+                        job_type: { type: "string", description: "Employment type" },
+                        salary: { type: "string", description: "Salary (if listed)" },
+                        description: { type: "string", description: "Job description" },
+                        url: { type: "string", description: "Apply / listing URL" },
+                        posted_date: { type: "string", description: "Date posted" },
+                        tags: { type: "array", description: "Skill / category tags", items: { type: "string" } },
+                      },
+                    },
+                  },
+                },
+              },
+              example: { items: [{ source: "Indeed", title: "Senior Java Developer", company: "Fintech Ltd", location: "London, UK", remote: false, job_type: "fulltime", salary: "£70,000 - £90,000", description: "Design and build scalable microservices...", url: "https://uk.indeed.com/viewjob?jk=sample1", posted_date: "2026-08-12", tags: ["java", "spring"] }] },
+            },
+          }),
+        },
+      },
     };
     app.use(paymentMiddleware(routes, resourceServer));
 
@@ -743,6 +833,22 @@ try {
       const cust = customerToken(req);
       try {
         const records = recordsFor(key, req.query.max, cust); // capped to 1
+        const rate = rateFor(key);
+        const result = await runActor(key, paramsFromReq(req), cust);
+        result.priceUsd = +(records * rate).toFixed(4);
+        result.ratePerRecord = rate;
+        res.json(withMoney(result, true));
+      } catch (e) {
+        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+      }
+    });
+
+    // Job Listings (26+ boards) — dedicated paid path ($0.01/record, capped at 100).
+    app.get("/api/all-jobs", async (req, res) => {
+      const key = "all-jobs-scraper";
+      const cust = customerToken(req);
+      try {
+        const records = recordsFor(key, req.query.max, cust);
         const rate = rateFor(key);
         const result = await runActor(key, paramsFromReq(req), cust);
         result.priceUsd = +(records * rate).toFixed(4);
