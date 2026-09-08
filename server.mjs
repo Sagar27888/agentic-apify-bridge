@@ -766,9 +766,12 @@ try {
       },
     };
 
-    // Pre-payment input guard: reject requests missing required params with 400 BEFORE the
-    // x402 middleware settles payment — so buyers are never charged for a call that can't run
-    // (e.g. YouTube transcript with no videoUrl). Runs before paymentMiddleware.
+    // Pre-payment input guard: validate EVERY paid request BEFORE the x402 middleware settles
+    // payment. Any missing/invalid input => 400 with no payment and no Apify run, so neither the
+    // buyer's wallet nor your Apify balance is ever charged for a call that cannot succeed.
+    // NOTE: this catches malformed/wrong-format/enum/type input. It cannot catch inputs that are
+    // valid but yield nothing (a real city with 0 events, a valid-but-private video) — knowing that
+    // requires actually running the actor.
     const REQUIRED = {
       "/api/business-leads": ["q", "location"],
       "/api/amazon-products": ["q"],
@@ -777,12 +780,38 @@ try {
       "/api/youtube-transcript": ["videoUrl"],
       "/api/all-jobs": ["keyword"],
     };
+    const AMAZON_DOMAINS = ["www.amazon.com", "www.amazon.in", "www.amazon.co.uk", "www.amazon.de", "www.amazon.ca", "www.amazon.com.au", "www.amazon.ae"];
+    const SENIORITY = ["Junior", "Mid", "Senior", "Lead", "Principal", "Staff", "Director"];
+    const JOB_TYPES = ["all", "fulltime", "parttime", "contract", "internship"];
+    const YT_LANGS = ["en", "hi", "gu", "pt", "es", "fr", "de", "it", "ja", "ko", "zh", "ru", "ar"];
+    const YT_RE = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)[\w-]{5,}/i;
+    const val = (v) => String(v == null ? "" : v).trim();
+    function validateReq(pathName, q) {
+      const errs = [];
+      const need = REQUIRED[pathName] || [];
+      for (const k of need) if (!val(q[k])) errs.push(`missing required parameter '${k}'`);
+      // max: if provided, must be a positive whole number (not used by youtube-transcript)
+      if (pathName !== "/api/youtube-transcript" && val(q.max)) {
+        const n = Number(q.max);
+        if (!Number.isInteger(n) || n < 1) errs.push(`'max' must be a positive whole number`);
+      }
+      if (pathName === "/api/amazon-products" && val(q.domain) && !AMAZON_DOMAINS.includes(val(q.domain)))
+        errs.push(`'domain' must be one of: ${AMAZON_DOMAINS.join(", ")}`);
+      if (pathName === "/api/linkedin-candidates" && val(q.seniority) && !SENIORITY.includes(val(q.seniority)))
+        errs.push(`'seniority' must be one of: ${SENIORITY.join(", ")}`);
+      if (pathName === "/api/all-jobs" && val(q.job_type) && !JOB_TYPES.includes(val(q.job_type)))
+        errs.push(`'job_type' must be one of: ${JOB_TYPES.join(", ")}`);
+      if (pathName === "/api/youtube-transcript") {
+        if (val(q.videoUrl) && !YT_RE.test(val(q.videoUrl))) errs.push(`'videoUrl' must be a valid YouTube URL (youtube.com or youtu.be)`);
+        if (val(q.language) && !YT_LANGS.includes(val(q.language))) errs.push(`'language' must be one of: ${YT_LANGS.join(", ")}`);
+      }
+      return errs;
+    }
     app.use((req, res, next) => {
-      const need = REQUIRED[req.path];
-      if (!need) return next();
-      const missing = need.filter((k) => !String(req.query[k] || "").trim());
-      if (missing.length) {
-        return res.status(400).json({ error: `Missing required parameter(s): ${missing.join(", ")}. No payment taken.`, required: need });
+      if (!REQUIRED[req.path]) return next(); // only guard the paid endpoints
+      const errs = validateReq(req.path, req.query);
+      if (errs.length) {
+        return res.status(400).json({ error: `Invalid request — no payment taken. ${errs.join("; ")}.`, issues: errs });
       }
       next();
     });
