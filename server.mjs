@@ -765,6 +765,28 @@ try {
         },
       },
     };
+
+    // Pre-payment input guard: reject requests missing required params with 400 BEFORE the
+    // x402 middleware settles payment — so buyers are never charged for a call that can't run
+    // (e.g. YouTube transcript with no videoUrl). Runs before paymentMiddleware.
+    const REQUIRED = {
+      "/api/business-leads": ["q", "location"],
+      "/api/amazon-products": ["q"],
+      "/api/all-events": ["location"],
+      "/api/linkedin-candidates": ["role"],
+      "/api/youtube-transcript": ["videoUrl"],
+      "/api/all-jobs": ["keyword"],
+    };
+    app.use((req, res, next) => {
+      const need = REQUIRED[req.path];
+      if (!need) return next();
+      const missing = need.filter((k) => !String(req.query[k] || "").trim());
+      if (missing.length) {
+        return res.status(400).json({ error: `Missing required parameter(s): ${missing.join(", ")}. No payment taken.`, required: need });
+      }
+      next();
+    });
+
     app.use(paymentMiddleware(routes, resourceServer));
 
     // Runs only after payment is verified/settled by the middleware.
