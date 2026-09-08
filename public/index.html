@@ -124,16 +124,10 @@
     </div>
 
     <div class="btns" style="margin-top:18px">
-      <div>
-        <button class="b-our" id="btnOur">PAID &nbsp;·&nbsp; compute on OUR Apify</button>
-        <div class="scen">Agent pays USDC &rarr; us. Platform fee &rarr; <b>our</b> Apify balance.</div>
-      </div>
-      <div>
-        <button class="b-cust" id="btnCust">PAID &nbsp;·&nbsp; compute on CUSTOMER Apify</button>
-        <div class="scen">Agent pays USDC &rarr; us. Platform fee &rarr; <b>customer's</b> Apify balance.</div>
-      </div>
+      <div class="scen">This service is called by AI agents via <b>x402</b> (pay-per-request in USDC) on
+        <a href="https://agentic.market/services/techforce-agents-onrender-com" target="_blank" style="color:var(--accent-d);font-weight:700">Agentic Market</a>.
+        Agents pay per call and receive results as JSON. Use the fields above to estimate pricing.</div>
     </div>
-    <button class="mini" id="btnFree">or run a free preview (no payment — just to see the platform fee)</button>
   </div>
 
   <div id="out"></div>
@@ -174,8 +168,7 @@ $("actor").addEventListener("change",syncFields);
 $("max").addEventListener("input",updatePrice);
 
 function busy(on,label){
-  [$("btnOur"),$("btnCust"),$("btnFree")].forEach(b=>b.disabled=on);
-  if(on) $("out").innerHTML = `<div class="card"><span class="spin"></span>${label} — running the Actor and reading the platform fee… (first call can take up to ~2 min)</div>`;
+  if(on) $("out").innerHTML = `<div class="card"><span class="spin"></span>${label}…</div>`;
 }
 
 function money(m){
@@ -219,13 +212,6 @@ async function call(url,label){
   catch(e){ $("out").innerHTML=`<div class="card"><div class="err">${e.message}</div></div>`; }
   finally{ busy(false); }
 }
-
-$("btnOur").onclick = ()=> call("/agent-pay/run?"+qs(false), "PAID · our compute");
-$("btnCust").onclick = ()=>{
-  if(!$("token").value.trim()){ alert("Paste the customer's Apify token first — that is what bills the platform fee to their side."); return; }
-  call("/agent-pay/run?"+qs(true), "PAID · customer compute");
-};
-$("btnFree").onclick = ()=> call("/demo/run?"+qs(!!$("token").value.trim()), "Free preview");
 
 loadActors();
 </script>

@@ -297,19 +297,12 @@ function withMoney(result, paid) {
   return { paid: !!paid, price: "$" + price.toFixed(4), network: NETWORK, ...result, money };
 }
 
-// ---- FREE preview (no payment) — shows the Actor + platform fee for both scenarios ----
-app.get("/demo/run", async (req, res) => {
-  const { key } = actorFromReq(req);
-  const cust = customerToken(req);
-  const pr = pricingForReq(req);
-  try {
-    const result = await runActor(key, paramsFromReq(req), cust);
-    result.priceUsd = pr.priceUsd;
-    result.ratePerRecord = pr.rate;
-    res.json(withMoney(result, false));
-  } catch (e) {
-    res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
-  }
+// ---- Free preview DISABLED ----
+// This endpoint used to run the Actor with no payment (billed to OUR Apify balance), so anyone
+// hitting the URL could scrape for free on our account. Disabled to stop free compute usage.
+// Real access is paid-only via the x402 /api/* routes.
+app.get("/demo/run", (_req, res) => {
+  res.status(403).json({ error: "Free preview is disabled. This service is paid-only via x402. Call the /api/* endpoints through Agentic Market." });
 });
 
 // ---- "Paying agent" showcase: server pays its own x402 endpoint with a test wallet ----
