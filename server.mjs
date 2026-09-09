@@ -802,6 +802,12 @@ try {
     }
     app.use((req, res, next) => {
       if (!REQUIRED[req.path]) return next(); // only guard the paid endpoints
+      // x402 requires a 402 on any UNPAID request (no X-PAYMENT header) so the discovery
+      // indexer/validator can preflight the resource. Only run the input guard once the client
+      // actually presents a payment — then reject invalid input with 400 BEFORE the middleware
+      // settles, so a bad request never charges the wallet or the Apify balance.
+      const hasPayment = !!(req.headers["x-payment"] || req.headers["X-PAYMENT"]);
+      if (!hasPayment) return next(); // let paymentMiddleware answer with 402
       const errs = validateReq(req.path, req.query);
       if (errs.length) {
         return res.status(400).json({ error: `Invalid request — no payment taken. ${errs.join("; ")}.`, issues: errs });
