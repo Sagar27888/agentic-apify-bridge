@@ -308,6 +308,14 @@ app.get("/demo/run", (_req, res) => {
 // ---- "Paying agent" showcase: server pays its own x402 endpoint with a test wallet ----
 // No customer token => "PAID from OUR side" (we pay compute). With token => "PAID from CUSTOMER side".
 app.get("/agent-pay/run", async (req, res) => {
+  // This endpoint pays from OUR wallet + runs a real (paid) Apify actor. Lock it so
+  // random hits / bots / crawlers cannot drain the wallet + Apify balance. It only
+  // works when AGENT_PAY_SECRET is set AND the caller presents the matching key.
+  const secret = process.env.AGENT_PAY_SECRET || "";
+  const given = (req.get("x-agent-pay-secret") || req.query.key || "").toString();
+  if (!secret || given !== secret) {
+    return res.status(403).json({ paid: false, error: "Disabled. This self-paying showcase requires AGENT_PAY_SECRET and a matching 'key'." });
+  }
   const pk = process.env.PRIVATE_KEY;
   if (!PAY_TO || !pk) {
     return res.status(400).json({ paid: false, error: "Set PAY_TO + PRIVATE_KEY (a funded base-sepolia wallet) in env to run the paying-agent showcase." });
