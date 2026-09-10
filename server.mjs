@@ -223,8 +223,12 @@ async function runActor(actorKey, params, token) {
   // resolve how many to scrape: per-actor floor/ceiling (recordsFor), so delivery matches what the buyer is charged
   const amount = recordsFor(actorKey, params.max, token);
   const input = def.input({ ...params, max: amount });
+  // Per-actor memory cap. The YouTube actor's "Actor Start" event bills $0.10 PER GB
+  // (min 1), so the default 4 GB = $0.40/run. 1 GB is plenty for a transcript => $0.10.
+  const mem = ACTOR_MEMORY[actorKey];
+  const startUrl = `https://api.apify.com/v2/acts/${def.apify}/runs?token=${useToken}` + ( mem ? `&memory=${mem}` : "" );
   // 1) start the run (async) so we can read its usage/cost afterward
-  const start = await fetch(`https://api.apify.com/v2/acts/${def.apify}/runs?token=${useToken}`, {
+  const start = await fetch(startUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -282,6 +286,9 @@ const RATES = {
 const ACTOR_MAX = { "all-events-scraper": 100, "linkedin-candidate-search": 50, "youtube-transcript-scraper": 1, "all-jobs-scraper": 100 };
 // Per-actor MINIMUM records (some Apify actors reject requests below a floor, e.g. all-jobs needs >= 10).
 const ACTOR_MIN = { "all-jobs-scraper": 10 };
+// Per-actor run memory (MB). YouTube's Actor-Start event bills $0.10 PER GB; the 4 GB
+// default cost $0.40/run — 1 GB cuts it to $0.10 and a transcript needs no more.
+const ACTOR_MEMORY = { "youtube-transcript-scraper": 1024 };
 function recordsFor(actorKey, maxParam, token) {
   const floor = ACTOR_MIN[actorKey] || MIN_RESULTS;
   let n = Math.max(amountFor(maxParam, token), floor);
