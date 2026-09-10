@@ -177,9 +177,42 @@ function sampleItems(max) {
 // ---- core: run an Actor and RETURN THE PLATFORM FEE + which account paid it ----
 // token supplied  => runs on CUSTOMER Apify account (Scenario B) → platform fee billed to them.
 // no token        => runs on OUR APIFY_TOKEN (Scenario A)        → platform fee billed to us.
+// Hard input gate, keyed by actor. Runs immediately before the paid Apify call so an
+// invalid/empty input can NEVER trigger a billable run — even if the pre-payment
+// HTTP guard was bypassed (trailing slash, alternate path, direct call, etc.).
+const YT_URL_RE = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)[\w-]{5,}/i;
+function validateActorInput(actorKey, p) {
+  const v = (x) => String(x == null ? "" : x).trim();
+  switch (actorKey) {
+    case "youtube-transcript-scraper":
+      if (!v(p.videoUrl)) return "missing required parameter 'videoUrl'";
+      if (!YT_URL_RE.test(v(p.videoUrl))) return "'videoUrl' must be a valid YouTube URL";
+      break;
+    case "amazon-scraper":
+      if (!v(p.q)) return "missing required parameter 'q'";
+      break;
+    case "all-events-scraper":
+      if (!v(p.location)) return "missing required parameter 'location'";
+      break;
+    case "linkedin-candidate-search":
+      if (!v(p.role)) return "missing required parameter 'role'";
+      break;
+    case "all-jobs-scraper":
+      if (!v(p.keyword)) return "missing required parameter 'keyword'";
+      break;
+    case "google-maps-leads-sales-intelligence-tool":
+      if (!v(p.q) || !v(p.location)) return "missing required parameter 'q' and/or 'location'";
+      break;
+  }
+  return null;
+}
+
 async function runActor(actorKey, params, token) {
   const def = ACTORS[actorKey];
   if (!def) throw new Error(`Unknown actor '${actorKey}'. Known: ${Object.keys(ACTORS).join(", ")}`);
+  // Final safety gate: reject invalid input BEFORE spending any Apify balance.
+  const verr = validateActorInput(actorKey, params);
+  if (verr) { const e = new Error(`Invalid input — no actor run, no charge. ${verr}.`); e.code = "INVALID_INPUT"; throw e; }
   const useToken = token || APIFY_TOKEN;
   const billedTo = token ? "customer" : "platform";
 
@@ -809,14 +842,18 @@ try {
       return errs;
     }
     app.use((req, res, next) => {
-      if (!REQUIRED[req.path]) return next(); // only guard the paid endpoints
+      // Normalise the path so a trailing slash / case variant can't skip the guard
+      // (Express still routes those to the handler, so an unnormalised exact match
+      // was letting bad input through to a billable run).
+      const pathName = ( req.path.replace(/\/+$/, "") || "/" ).toLowerCase();
+      if (!REQUIRED[pathName]) return next(); // only guard the paid endpoints
       // x402 requires a 402 on any UNPAID request (no X-PAYMENT header) so the discovery
       // indexer/validator can preflight the resource. Only run the input guard once the client
       // actually presents a payment — then reject invalid input with 400 BEFORE the middleware
       // settles, so a bad request never charges the wallet or the Apify balance.
       const hasPayment = !!(req.headers["x-payment"] || req.headers["X-PAYMENT"]);
       if (!hasPayment) return next(); // let paymentMiddleware answer with 402
-      const errs = validateReq(req.path, req.query);
+      const errs = validateReq(pathName, req.query);
       if (errs.length) {
         return res.status(400).json({ error: `Invalid request — no payment taken. ${errs.join("; ")}.`, issues: errs });
       }
@@ -836,7 +873,7 @@ try {
         result.ratePerRecord = pr.rate;
         res.json(withMoney(result, true));
       } catch (e) {
-        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+        res.status(e.code === "INVALID_INPUT" ? 400 : 500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
       }
     });
 
@@ -852,7 +889,7 @@ try {
         result.ratePerRecord = rate;
         res.json(withMoney(result, true));
       } catch (e) {
-        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+        res.status(e.code === "INVALID_INPUT" ? 400 : 500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
       }
     });
 
@@ -868,7 +905,7 @@ try {
         result.ratePerRecord = rate;
         res.json(withMoney(result, true));
       } catch (e) {
-        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+        res.status(e.code === "INVALID_INPUT" ? 400 : 500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
       }
     });
 
@@ -884,7 +921,7 @@ try {
         result.ratePerRecord = rate;
         res.json(withMoney(result, true));
       } catch (e) {
-        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+        res.status(e.code === "INVALID_INPUT" ? 400 : 500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
       }
     });
 
@@ -900,7 +937,7 @@ try {
         result.ratePerRecord = rate;
         res.json(withMoney(result, true));
       } catch (e) {
-        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+        res.status(e.code === "INVALID_INPUT" ? 400 : 500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
       }
     });
 
@@ -916,7 +953,7 @@ try {
         result.ratePerRecord = rate;
         res.json(withMoney(result, true));
       } catch (e) {
-        res.status(500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
+        res.status(e.code === "INVALID_INPUT" ? 400 : 500).json({ error: String(e.message), billedTo: cust ? "customer" : "platform" });
       }
     });
     x402Enabled = true;
