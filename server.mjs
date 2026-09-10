@@ -239,7 +239,11 @@ async function runActor(actorKey, params, token) {
   // 2) poll until the run finishes (cap ~240s for the demo)
   const deadline = Date.now() + 240000;
   while (!["SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"].includes(run.status)) {
-    if (Date.now() > deadline) throw new Error(`Run ${run.id} still ${run.status} after 240s (Apify free plan runs one job at a time — wait, then retry, or use a smaller max).`);
+    if (Date.now() > deadline) {
+      // Abort the run so it stops consuming Apify balance instead of orphaning + billing.
+      try { await fetch(`https://api.apify.com/v2/actor-runs/${run.id}/abort?token=${useToken}`, { method: "POST" }); } catch (_) {}
+      throw new Error(`Run ${run.id} still ${run.status} after 240s — aborted to stop further charges (Apify free plan runs one job at a time; retry or use a smaller max).`);
+    }
     await sleep(2500);
     run = (await (await fetch(`https://api.apify.com/v2/actor-runs/${run.id}?token=${useToken}`)).json()).data;
   }
@@ -871,7 +875,9 @@ try {
 
     // Runs only after payment is verified/settled by the middleware.
     app.get("/api/business-leads", async (req, res) => {
-      const { key } = actorFromReq(req);
+      // Pin to the Google Maps actor — the price is computed for this actor, so ignore
+      // any ?actor override (a caller must not be able to run a different actor here).
+      const key = "google-maps-leads-sales-intelligence-tool";
       const cust = customerToken(req);
       try {
         const pr = pricingForReq(req);
