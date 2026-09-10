@@ -280,7 +280,7 @@ const RATES = {
   "amazon-scraper": 0.03,
   "flipkart-scraper": 0.008,
   "eventbrite-scraper": 0.006,
-  "all-events-scraper": 0.005,
+  "all-events-scraper": 0.02,
   "linkedin-candidate-search": 0.05,
   "youtube-transcript-scraper": 0.20, // FLAT per transcript (1 video/call); Apify cost $0.10/run
   "all-jobs-scraper": 0.01,
@@ -557,7 +557,7 @@ try {
         unpaidResponseBody: () => ({
           contentType: "application/json",
           body: {
-            note: "Sample preview. Pay $0.005/record via x402 to receive live results.",
+            note: "Sample preview. Pay $0.02/record via x402 to receive live results.",
             items: [
               { Title: "The Lion King at Lyceum Theatre - London", URL: "https://allevents.in/london/the-lion-king-at-lyceum-theatre-london", DateTime: "Tue, 11 Aug 07:30 PM + 175 more", Location: "Lyceum Theatre - London", Interested: "95+ Interested" },
               { Title: "London Tech Startup Meetup", URL: "https://allevents.in/london/tech-startup-meetup", DateTime: "Mon, 15 Sep 06:30 PM", Location: "WeWork Moorgate - London", Interested: "40+ Interested" },
@@ -565,7 +565,7 @@ try {
             ],
           },
         }),
-        description: "Local events on demand from AllEvents — event name, category, date & time, venue, city, and ticket link. Get results for $0.005 per record (minimum 1, up to 100). Simply enter a city and the number of events you want. Discover concerts, workshops, festivals, and more.\n\nPowered by Techforce Global — explore more at https://techforceglobal.com",
+        description: "Local events on demand from AllEvents — event name, category, date & time, venue, city, and ticket link. Get results for $0.02 per record (minimum 1, up to 100). Simply enter a city and the number of events you want. Discover concerts, workshops, festivals, and more.\n\nPowered by Techforce Global — explore more at https://techforceglobal.com",
         mimeType: "application/json",
         extensions: {
           ...declareDiscoveryExtension({
@@ -906,7 +906,7 @@ try {
       }
     });
 
-    // All Events (AllEvents.in) — dedicated paid path (own price $0.005/record, capped at 100).
+    // All Events (AllEvents.in) — dedicated paid path (own price $0.02/record, capped at 100).
     app.get("/api/all-events", async (req, res) => {
       const key = "all-events-scraper";
       const cust = customerToken(req);
