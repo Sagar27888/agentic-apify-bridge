@@ -25,7 +25,7 @@ if (!pk) {
   process.exit(1);
 }
 
-const { wrapFetchWithPayment } = await import("x402-fetch");
+const { wrapFetchWithPayment } = await import("@x402/fetch");
 const { privateKeyToAccount } = await import("viem/accounts");
 
 const account = privateKeyToAccount(pk.startsWith("0x") ? pk : "0x" + pk);
