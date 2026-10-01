@@ -1,15 +1,27 @@
-// Real x402 paid call demo.
-// Proves an agent can pay in USDC (testnet) and get Actor results back.
-// Requires: PRIVATE_KEY (a funded base-sepolia wallet) in .env, and the server running.
+// Real x402 paid call.
+// Pays in USDC and gets Actor results back from any live endpoint on this bridge.
+// Requires: PRIVATE_KEY (a funded wallet on the server's NETWORK) in the environment.
+//
+// Usage:
+//   BRIDGE_URL=https://techforce-agents.onrender.com PRIVATE_KEY=0x... \
+//     node paid-client.mjs "/api/all-events?location=London&max=1"
 import dotenv from "dotenv";
 dotenv.config();
 
 const BASE = process.env.BRIDGE_URL || "http://localhost:8080";
-const URL = `${BASE}/api/flipkart?q=${encodeURIComponent(process.argv[2] || "laptop")}&max=6`;
+const path = process.argv[2];
+if (!path) {
+  console.error('Usage: node paid-client.mjs "/api/<endpoint>?param=value..."');
+  console.error("Endpoints: /api/business-leads?q=&location=&max=1  /api/amazon-products?q=&max=1");
+  console.error("           /api/all-events?location=&max=1  /api/linkedin-candidates?role=&max=1");
+  console.error('           /api/youtube-transcript?videoUrl=  /api/all-jobs?keyword=&max=1');
+  process.exit(1);
+}
+const URL = `${BASE}${path}`;
 
 const pk = process.env.PRIVATE_KEY;
 if (!pk) {
-  console.error("Set PRIVATE_KEY in .env (a base-sepolia wallet with test USDC). See README.");
+  console.error("Set PRIVATE_KEY (a wallet funded on the server's NETWORK, e.g. Base mainnet).");
   process.exit(1);
 }
 
