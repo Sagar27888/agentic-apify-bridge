@@ -25,11 +25,14 @@ if (!pk) {
   process.exit(1);
 }
 
-const { wrapFetchWithPayment } = await import("@x402/fetch");
+const { wrapFetchWithPaymentFromConfig } = await import("@x402/fetch");
+const { ExactEvmScheme } = await import("@x402/evm");
 const { privateKeyToAccount } = await import("viem/accounts");
 
 const account = privateKeyToAccount(pk.startsWith("0x") ? pk : "0x" + pk);
-const fetchWithPay = wrapFetchWithPayment(globalThis.fetch.bind(globalThis), account);
+const fetchWithPay = wrapFetchWithPaymentFromConfig(globalThis.fetch.bind(globalThis), {
+  schemes: [{ network: "eip155:*", client: new ExactEvmScheme(account) }],
+});
 
 console.log("Paying + calling:", URL, "as", account.address);
 const res = await fetchWithPay(URL, { method: "GET" });
