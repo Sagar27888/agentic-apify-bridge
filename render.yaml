@@ -11,7 +11,7 @@ services:
       - key: PRICE
         value: $0.05
       - key: NETWORK
-        value: base-sepolia
+        value: base
       - key: FACILITATOR_URL
         value: https://x402.org/facilitator
       - key: APIFY_TOKEN
